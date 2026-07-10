@@ -1,0 +1,17 @@
+[package]
+name = "coding-agent-cli"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow = "1"
+async-trait = "0.1"
+dotenvy = "0.15"
+liteagent = { path = "../.." }
+libc = "0.2"
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+
+[dev-dependencies]
+tempfile = "3"

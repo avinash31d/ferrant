@@ -1,0 +1,8 @@
+/target
+.env
+/examples/coding-agent-cli/target
+.tmp
+./examples/coding-agent-cli/
+todo
+__pycache__
+python-wrapper/target

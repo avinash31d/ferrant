@@ -1,0 +1,58 @@
+[package]
+name = "liteagent"
+version = "0.1.0"
+edition = "2021"
+description = "A lightweight, multi-provider AI agent framework in pure Rust (Agno-style)."
+license = "MIT"
+
+[features]
+default = []
+opentelemetry = ["dep:opentelemetry"]
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "stream", "native-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+async-trait = "0.1"
+anyhow = "1"
+thiserror = "1"
+futures = "0.3"
+dotenvy = "0.15"
+uuid = { version = "=1.10.0", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+base64 = "0.22"
+jsonschema = { version = "0.47", default-features = false }
+opentelemetry = { version = "0.32", optional = true }
+
+[[example]]
+name = "basic_agent"
+path = "examples/basic_agent.rs"
+
+[[example]]
+name = "custom_tool"
+path = "examples/custom_tool.rs"
+
+[[example]]
+name = "anthropic_agent"
+path = "examples/anthropic_agent.rs"
+
+[[example]]
+name = "openai_compatible_agent"
+path = "examples/openai_compatible_agent.rs"
+
+[[example]]
+name = "mcp_agent"
+path = "examples/mcp_agent.rs"
+
+[[example]]
+name = "multi_agent"
+path = "examples/multi_agent.rs"
+
+[[example]]
+name = "multimodal_input"
+path = "examples/multimodal_input.rs"
+
+[[example]]
+name = "multimodal_output"
+path = "examples/multimodal_output.rs"
