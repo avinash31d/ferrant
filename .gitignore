@@ -5,4 +5,5 @@
 ./examples/coding-agent-cli/
 todo
 __pycache__
+*.so
 python-wrapper/target

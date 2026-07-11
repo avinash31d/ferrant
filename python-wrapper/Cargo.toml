@@ -1,6 +1,6 @@
 [package]
 name = "ferragent-python"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 publish = false
 description = "Optional lightweight Python bindings for the Rust ferragent core"

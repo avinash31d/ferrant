@@ -1,6 +1,6 @@
 [package]
 name = "ferragent"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "A lightweight, multi-provider AI agent framework in pure Rust (Agno-style)."
 license-file = "LICENSE"
