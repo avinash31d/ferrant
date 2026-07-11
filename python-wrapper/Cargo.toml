@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 description = "Optional lightweight Python bindings for the Rust ferragent core"
-license = "MIT"
+license-file = "../LICENSE"
 
 [lib]
 name = "ferragent_native"
