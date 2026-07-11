@@ -1,12 +1,12 @@
-# liteagent Python wrapper
+# ferragent Python wrapper
 
-This directory is an optional, thin Python binding around the Rust `liteagent`
+This directory is an optional, thin Python binding around the Rust `ferragent`
 crate. The agent loop, providers, MCP, graph scheduler, persistence, streaming,
 and retrieval remain implemented in Rust. Installing this package does not
 change the Rust crate or its examples.
 
 ```bash
-pip install liteagent
+pip install ferragent
 ```
 
 Then import it directly:
@@ -14,7 +14,7 @@ Then import it directly:
 ```python
 import asyncio
 import os
-from liteagent import Agent
+from ferragent import Agent
 
 async def main():
     agent = Agent.openai("gpt-5-nano", os.environ["OPENAI_API_KEY"])

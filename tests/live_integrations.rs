@@ -1,9 +1,9 @@
 //! Opt-in network/process integration tests. Run with:
 //! `cargo test --test live_integrations -- --ignored --nocapture`
 
-use liteagent::llm::anthropic::AnthropicModel;
-use liteagent::llm::openai::OpenAiModel;
-use liteagent::{Agent, McpClient};
+use ferragent::llm::anthropic::AnthropicModel;
+use ferragent::llm::openai::OpenAiModel;
+use ferragent::{Agent, McpClient};
 
 #[tokio::test]
 #[ignore = "requires npx and downloads the real MCP filesystem server"]

@@ -1,8 +1,8 @@
 //! Agent using tools discovered from an MCP filesystem server.
 //! Requires Node.js/npx and an OPENAI_API_KEY.
 
-use liteagent::llm::openai::OpenAiModel;
-use liteagent::{Agent, McpClient};
+use ferragent::llm::openai::OpenAiModel;
+use ferragent::{Agent, McpClient};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

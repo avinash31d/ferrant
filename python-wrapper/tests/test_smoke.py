@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from liteagent import Retriever, Tool, WorkflowBuilder
+from ferragent import Retriever, Tool, WorkflowBuilder
 
 
 class WrapperSmokeTests(unittest.IsolatedAsyncioTestCase):

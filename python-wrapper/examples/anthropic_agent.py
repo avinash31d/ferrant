@@ -1,6 +1,6 @@
 import asyncio
 import os
-from liteagent import Agent, Tool
+from ferragent import Agent, Tool
 
 async def main() -> None:
     search = Tool("search_docs", "Search internal documentation", {

@@ -50,7 +50,7 @@ impl Sandbox {
         Self {
             workspace: workspace.to_path_buf(),
             scratch: std::env::temp_dir()
-                .join(format!("liteagent-coding-agent-{}", std::process::id())),
+                .join(format!("ferragent-coding-agent-{}", std::process::id())),
             backend,
         }
     }

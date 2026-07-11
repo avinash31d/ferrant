@@ -5,23 +5,23 @@
 //! evaluation gates, and integration discovery. It calls OpenAI, so set
 //! `OPENAI_API_KEY` before running it.
 
-use liteagent::evaluation::{
+use ferragent::evaluation::{
     ContainsScorer, EvaluationCase, EvaluationDataset, EvaluationOutput, EvaluationRunner,
     FunctionEvaluationTarget, RegressionThresholds,
 };
-use liteagent::graph::{FileGraphStore, Graph, GraphStatus, NodeOutput, NodeRetryPolicy};
-use liteagent::integrations::{IntegrationCapability, IntegrationRegistry};
-use liteagent::llm::openai::OpenAiModel;
-use liteagent::observability::{
+use ferragent::graph::{FileGraphStore, Graph, GraphStatus, NodeOutput, NodeRetryPolicy};
+use ferragent::integrations::{IntegrationCapability, IntegrationRegistry};
+use ferragent::llm::openai::OpenAiModel;
+use ferragent::observability::{
     CompositeTracer, InMemoryMetricsCollector, InMemorySpanExporter, InMemoryUsageCollector,
     OpenTelemetryAdapter,
 };
-use liteagent::rag::{
+use ferragent::rag::{
     ContextFormatter, Document, Embedder, FileVectorStore, HashEmbedder, IngestionPipeline,
     LexicalReranker, MetadataFilter, RetrievalOptions, RetrievalStrategy, Retriever, RetrieverTool,
     TextChunker, VectorStore,
 };
-use liteagent::{
+use ferragent::{
     Agent, EvaluationBaselineStore, EvaluationReportLogStore, ExecutionPolicy, FileStorage,
     StreamEvent, UsageLogStore,
 };
@@ -56,7 +56,7 @@ fn answer_schema() -> Value {
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
     let api_key = std::env::var("OPENAI_API_KEY")?;
-    let data_dir = std::env::temp_dir().join("liteagent-advanced-runtime");
+    let data_dir = std::env::temp_dir().join("ferragent-advanced-runtime");
 
     // The vector snapshot is atomically replaced and recovered from a backup
     // after an interrupted write. Arc trait objects let ingestion, retrieval,
@@ -73,7 +73,7 @@ async fn main() -> anyhow::Result<()> {
         .ingest(vec![
             Document {
                 id: "graph-guide".into(),
-                text: "Liteagent checkpoints graph supersteps. Failed nodes resume with stable \
+                text: "Ferragent checkpoints graph supersteps. Failed nodes resume with stable \
                        idempotency keys, while joins and interrupts survive process restarts."
                     .into(),
                 metadata: json!({"source":"graph-guide.md", "tenant":"demo"}),
@@ -103,7 +103,7 @@ async fn main() -> anyhow::Result<()> {
     let span_exporter = InMemorySpanExporter::default();
     let tracer = CompositeTracer::default().push(OpenTelemetryAdapter::new(span_exporter.clone()));
     #[cfg(feature = "opentelemetry")]
-    let tracer = tracer.push(liteagent::OpenTelemetryTracer);
+    let tracer = tracer.push(ferragent::OpenTelemetryTracer);
 
     let model = OpenAiModel::new("gpt-4o-mini", api_key);
     let agent = Agent::builder(model)
@@ -139,7 +139,7 @@ async fn main() -> anyhow::Result<()> {
                 _ => {}
             }
         }
-        Ok::<_, liteagent::AgentError>(())
+        Ok::<_, ferragent::AgentError>(())
     });
     agent
         .lock()
@@ -151,7 +151,7 @@ async fn main() -> anyhow::Result<()> {
         .await?;
     event_printer.await??;
 
-    let question = "How does liteagent make runs durable and observable?";
+    let question = "How does ferragent make runs durable and observable?";
     let schema = Arc::new(answer_schema());
 
     // The graph persists every superstep. `retrieve` conditionally fans out

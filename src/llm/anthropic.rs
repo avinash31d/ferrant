@@ -220,7 +220,7 @@ impl Model for AnthropicModel {
         let (mut system, anthropic_messages) = Self::split(messages, &self.system);
         let mut provider_tools = Self::to_anthropic_tools(tools);
         provider_tools.push(json!({
-            "name":"liteagent_structured_output",
+            "name":"ferragent_structured_output",
             "description":"Return the final response in the required structure",
             "input_schema":schema
         }));
@@ -229,9 +229,9 @@ impl Model for AnthropicModel {
             "tools":provider_tools
         });
         if tools.is_empty() {
-            body["tool_choice"] = json!({"type":"tool","name":"liteagent_structured_output"});
+            body["tool_choice"] = json!({"type":"tool","name":"ferragent_structured_output"});
         } else {
-            let instruction = "Use ordinary tools when needed. You must return the final answer by calling liteagent_structured_output.";
+            let instruction = "Use ordinary tools when needed. You must return the final answer by calling ferragent_structured_output.";
             system = Some(match system {
                 Some(existing) => format!("{existing}\n\n{instruction}"),
                 None => instruction.into(),
@@ -245,13 +245,13 @@ impl Model for AnthropicModel {
         if let Some(call) = response
             .tool_calls
             .iter()
-            .find(|call| call.name == "liteagent_structured_output")
+            .find(|call| call.name == "ferragent_structured_output")
         {
             response.content = Some(call.arguments.to_string());
             response.content_parts = vec![ContentPart::text(call.arguments.to_string())];
             response
                 .tool_calls
-                .retain(|call| call.name != "liteagent_structured_output");
+                .retain(|call| call.name != "ferragent_structured_output");
         }
         Ok(response)
     }

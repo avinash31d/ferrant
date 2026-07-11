@@ -1,7 +1,7 @@
 //! Coordinator-led team with two specialist agents.
 
-use liteagent::llm::openai::OpenAiModel;
-use liteagent::{Agent, AgentTeam};
+use ferragent::llm::openai::OpenAiModel;
+use ferragent::{Agent, AgentTeam};
 
 fn model(api_key: &str) -> OpenAiModel {
     OpenAiModel::new("gpt-5-nano", api_key)

@@ -1,11 +1,11 @@
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
-use liteagent::error::Result as AgentResult;
-use liteagent::llm::anthropic::AnthropicModel;
-use liteagent::llm::openai::OpenAiModel;
-use liteagent::llm::{Model, ModelResponse};
-use liteagent::message::Message;
-use liteagent::tool::ToolSpec;
+use ferragent::error::Result as AgentResult;
+use ferragent::llm::anthropic::AnthropicModel;
+use ferragent::llm::openai::OpenAiModel;
+use ferragent::llm::{Model, ModelResponse};
+use ferragent::message::Message;
+use ferragent::tool::ToolSpec;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};

@@ -1,7 +1,7 @@
 use async_trait::async_trait;
-use liteagent::llm::openai::OpenAiModel;
-use liteagent::memory::InMemoryStorage;
-use liteagent::{Agent, Tool};
+use ferragent::llm::openai::OpenAiModel;
+use ferragent::memory::InMemoryStorage;
+use ferragent::{Agent, Tool};
 use serde_json::{json, Value};
 
 /// A hand-written tool (rather than a FunctionTool closure) — useful when a

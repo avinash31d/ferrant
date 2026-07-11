@@ -1,5 +1,5 @@
-use liteagent::llm::openai::OpenAiModel;
-use liteagent::Agent;
+use ferragent::llm::openai::OpenAiModel;
+use ferragent::Agent;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

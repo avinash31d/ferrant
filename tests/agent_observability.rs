@@ -1,11 +1,11 @@
 use async_trait::async_trait;
-use liteagent::llm::{Model, ModelResponse, Usage};
-use liteagent::memory::Storage;
-use liteagent::observability::{
+use ferragent::llm::{Model, ModelResponse, Usage};
+use ferragent::memory::Storage;
+use ferragent::observability::{
     InMemoryMetricsCollector, InMemoryUsageCollector, ModelPricing, PricingTable,
     PricingUsageRecorder, UsageRecord, UsageRecorder,
 };
-use liteagent::{Agent, FileStorage, Message, Result, ToolSpec};
+use ferragent::{Agent, FileStorage, Message, Result, ToolSpec};
 
 struct AccountedModel;
 
@@ -52,7 +52,7 @@ async fn agent_records_normalized_usage_and_operational_metrics() {
 #[tokio::test]
 async fn file_session_storage_survives_reopen_and_rejects_unsafe_ids() {
     let directory =
-        std::env::temp_dir().join(format!("liteagent-sessions-{}", uuid::Uuid::new_v4()));
+        std::env::temp_dir().join(format!("ferragent-sessions-{}", uuid::Uuid::new_v4()));
     let storage = FileStorage::new(&directory);
     storage
         .save("session_1", &[Message::user("durable")])

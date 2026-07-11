@@ -1,13 +1,13 @@
 # coding-agent-cli
 
 A permission-gated coding agent built as a complete example project on top of
-`liteagent`. It can inspect an existing or new workspace, edit files, use a
+`ferragent`. It can inspect an existing or new workspace, edit files, use a
 constrained Git interface, install dependencies, and iteratively build, test,
 and run code.
 
 ## Run
 
-From the `liteagent` repository root:
+From the `ferragent` repository root:
 
 ```bash
 cargo run --manifest-path examples/coding-agent-cli/Cargo.toml -- \

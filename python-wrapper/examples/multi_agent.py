@@ -1,6 +1,6 @@
 import asyncio
 import os
-from liteagent import Agent, Team
+from ferragent import Agent, Team
 
 async def main() -> None:
     key = os.environ["OPENAI_API_KEY"]

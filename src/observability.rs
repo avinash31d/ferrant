@@ -698,7 +698,7 @@ struct OpenTelemetryState {
     trace_ids: HashMap<String, String>,
 }
 
-/// Converts liteagent lifecycle traces to OpenTelemetry-compatible spans.
+/// Converts ferragent lifecycle traces to OpenTelemetry-compatible spans.
 pub struct OpenTelemetryAdapter {
     exporter: Arc<dyn OpenTelemetryExporter>,
     state: Mutex<OpenTelemetryState>,

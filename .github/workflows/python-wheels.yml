@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/project/liteagent/
+      url: https://pypi.org/project/ferragent/
     permissions:
       id-token: write
     steps:

@@ -1,17 +1,17 @@
 [package]
-name = "liteagent-python"
+name = "ferragent-python"
 version = "0.1.0"
 edition = "2021"
 publish = false
-description = "Optional lightweight Python bindings for the Rust liteagent core"
+description = "Optional lightweight Python bindings for the Rust ferragent core"
 license = "MIT"
 
 [lib]
-name = "liteagent_native"
+name = "ferragent_native"
 crate-type = ["cdylib"]
 
 [dependencies]
-liteagent = { path = ".." }
+ferragent = { path = ".." }
 pyo3 = { version = "0.29", features = ["abi3-py39"] }
 pyo3-async-runtimes = { version = "0.29", features = ["tokio-runtime"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync"] }

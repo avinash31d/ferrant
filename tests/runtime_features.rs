@@ -1,8 +1,8 @@
 use async_trait::async_trait;
-use liteagent::llm::{Model, ModelResponse};
-use liteagent::message::ToolCall;
-use liteagent::rag::Chunker;
-use liteagent::*;
+use ferragent::llm::{Model, ModelResponse};
+use ferragent::message::ToolCall;
+use ferragent::rag::Chunker;
+use ferragent::*;
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -204,7 +204,7 @@ async fn streams_default_model_events() {
 
 #[tokio::test]
 async fn workflow_resumes_and_rag_retrieves() {
-    let directory = std::env::temp_dir().join(format!("liteagent-test-{}", uuid::Uuid::new_v4()));
+    let directory = std::env::temp_dir().join(format!("ferragent-test-{}", uuid::Uuid::new_v4()));
     let workflow = Workflow::new(FileWorkflowStore::new(&directory))
         .step("increment", |value| {
             Box::pin(async move { Ok(json!(value.as_u64().unwrap() + 1)) })

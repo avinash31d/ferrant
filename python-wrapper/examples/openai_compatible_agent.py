@@ -1,6 +1,6 @@
 import asyncio
 import os
-from liteagent import Agent
+from ferragent import Agent
 
 async def main() -> None:
     agent = Agent.openai(

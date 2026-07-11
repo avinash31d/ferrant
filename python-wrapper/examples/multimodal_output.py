@@ -2,7 +2,7 @@ import asyncio
 import base64
 import os
 from pathlib import Path
-from liteagent import Agent
+from ferragent import Agent
 
 async def main() -> None:
     agent = Agent.openai("gpt-audio-1.5", os.environ["OPENAI_API_KEY"],

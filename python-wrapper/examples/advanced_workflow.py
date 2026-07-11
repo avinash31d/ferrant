@@ -1,6 +1,6 @@
 """Durable fan-out, retry, join, approval, resume, and recovery."""
 import asyncio
-from liteagent import WorkflowBuilder
+from ferragent import WorkflowBuilder
 
 def plan(ctx: dict) -> dict:
     return {"update": {"plan": "review in parallel"}, "routes": ["research", "risk"]}
@@ -17,7 +17,7 @@ def publish(ctx: dict) -> dict:
     return {"update": {"published": True}}
 
 def workflow():
-    builder = WorkflowBuilder("release-workflow", ".liteagent/workflows", version="1")
+    builder = WorkflowBuilder("release-workflow", ".ferragent/workflows", version="1")
     builder.entry("plan")
     builder.node("plan", plan)
     builder.node("research", research)

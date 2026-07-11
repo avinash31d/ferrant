@@ -61,14 +61,14 @@ impl Tracer for OpenTelemetryTracer {
     fn record(&self, event: TraceEvent) {
         use opentelemetry::trace::{Span, Tracer as _};
         use opentelemetry::KeyValue;
-        let tracer = opentelemetry::global::tracer("liteagent");
+        let tracer = opentelemetry::global::tracer("ferragent");
         let mut span = tracer.start(event.kind);
-        span.set_attribute(KeyValue::new("liteagent.run_id", event.run_id));
+        span.set_attribute(KeyValue::new("ferragent.run_id", event.run_id));
         span.set_attribute(KeyValue::new(
-            "liteagent.timestamp_ms",
+            "ferragent.timestamp_ms",
             event.timestamp_ms.to_string(),
         ));
-        span.set_attribute(KeyValue::new("liteagent.fields", event.fields.to_string()));
+        span.set_attribute(KeyValue::new("ferragent.fields", event.fields.to_string()));
         span.end();
     }
 }

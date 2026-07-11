@@ -3,7 +3,7 @@ requires = ["maturin>=1.9,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "liteagent"
+name = "ferragent"
 version = "0.1.0"
 description = "Fast, lightweight AI agents powered by a Rust core"
 readme = "README.md"
@@ -25,5 +25,5 @@ classifiers = [
 
 [tool.maturin]
 python-source = "python"
-module-name = "liteagent._native"
+module-name = "ferragent._native"
 bindings = "pyo3"
