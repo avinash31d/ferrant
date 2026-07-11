@@ -242,7 +242,7 @@ dependencies = [
 
 [[package]]
 name = "ferrant"
-version = "0.1.4"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -261,7 +261,7 @@ dependencies = [
 
 [[package]]
 name = "ferrant-python"
-version = "0.1.4"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "async-trait",

@@ -36,6 +36,29 @@ model calls.
 See `examples/` for Python counterparts of every top-level Rust example and
 matched advanced workflow examples.
 
+## Focused Python examples
+
+Run these from the `python-wrapper/` directory after installing the package:
+
+```bash
+python examples/streaming.py
+python examples/memory.py
+python examples/rag.py
+DOCUMENT_PATH=invoice.pdf python examples/document_extraction.py
+DOCUMENT_PATH=invoice.pdf python examples/rag_document_extraction.py
+```
+
+- `streaming.py` prints `content_delta` events as the model generates them.
+- `memory.py` stores a session in `.ferrant/sessions` and recalls a prior turn.
+- `rag.py` persists a local hybrid vector index, retrieves relevant documents,
+  and provides the matches as grounded agent context.
+- `document_extraction.py` base64-encodes a local PDF and asks OpenAI to
+  extract invoice fields. Set `DOCUMENT_PATH` to a PDF and
+  `OPENAI_API_KEY` before running it.
+- `rag_document_extraction.py` transcribes a local PDF with OpenAI, indexes the
+  text locally, retrieves invoice-relevant passages, and returns
+  schema-validated extraction results. Set `DOCUMENT_PATH` to a PDF.
+
 The exposed surface covers OpenAI-compatible and Anthropic agents, Python
 tools, MCP-discovered tools, coordinator teams, multimodal input/output,
 streaming callbacks, schema-validated output, persistent retrieval, and durable

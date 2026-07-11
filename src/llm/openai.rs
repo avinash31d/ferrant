@@ -80,11 +80,19 @@ impl OpenAiModel {
                 file_id,
                 filename,
                 ..
-            } => json!({
-                "type":"file", "file":{
-                    "file_data":data, "file_id":file_id, "filename":filename
+            } => {
+                let mut file = serde_json::Map::new();
+                if let Some(data) = data {
+                    file.insert("file_data".to_string(), json!(data));
                 }
-            }),
+                if let Some(file_id) = file_id {
+                    file.insert("file_id".to_string(), json!(file_id));
+                }
+                if let Some(filename) = filename {
+                    file.insert("filename".to_string(), json!(filename));
+                }
+                json!({"type":"file", "file":file})
+            }
         }
     }
 
@@ -478,5 +486,31 @@ impl Model for OpenAiModel {
             tool_calls,
             usage,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn base64_file_input_omits_unset_file_id() {
+        let part = ContentPart::File {
+            data: Some("data:application/pdf;base64,ZmFrZQ==".to_owned()),
+            file_id: None,
+            filename: Some("invoice.pdf".to_owned()),
+            media_type: Some("application/pdf".to_owned()),
+        };
+
+        assert_eq!(
+            OpenAiModel::content_part(&part),
+            json!({
+                "type": "file",
+                "file": {
+                    "file_data": "data:application/pdf;base64,ZmFrZQ==",
+                    "filename": "invoice.pdf"
+                }
+            })
+        );
     }
 }
