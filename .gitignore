@@ -7,3 +7,5 @@ todo
 __pycache__
 *.so
 python-wrapper/target
+.venv
+python-wrapper/examples/.ferrant
