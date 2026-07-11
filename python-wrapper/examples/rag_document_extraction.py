@@ -56,8 +56,7 @@ async def main() -> None:
     ])
 
     extraction_request = (
-        "Extract the invoice number, vendor, invoice date, currency, total, "
-        "and line items from this document."
+        "Extract the code for Tool Calling"
     )
     matches = await retriever.retrieve(extraction_request, limit=6)
     context = "\n\n".join(
@@ -70,26 +69,9 @@ async def main() -> None:
     schema = {
         "type": "object",
         "properties": {
-            "invoice_number": {"type": ["string", "null"]},
-            "vendor": {"type": ["string", "null"]},
-            "invoice_date": {"type": ["string", "null"]},
-            "currency": {"type": ["string", "null"]},
-            "total": {"type": ["number", "null"]},
-            "line_items": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "description": {"type": "string"},
-                        "quantity": {"type": ["number", "null"]},
-                        "amount": {"type": ["number", "null"]},
-                    },
-                    "required": ["description", "quantity", "amount"],
-                    "additionalProperties": False,
-                },
-            },
+            "code": {"type": ["string", "null"]}
         },
-        "required": ["invoice_number", "vendor", "invoice_date", "currency", "total", "line_items"],
+        "required": ["code"],
         "additionalProperties": False,
     }
     result = await agent.run_structured(
