@@ -1,10 +1,10 @@
 [project]
 name = "ferrant"
-version = "0.1.5"
+version = "0.1.9"
 
 [package]
 name = "ferrant"
-version = "0.1.5"
+version = "0.1.9"
 edition = "2021"
 description = "A lightweight, multi-provider AI agent framework in pure Rust (Agno-style)."
 license-file = "LICENSE"
