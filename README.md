@@ -1,3 +1,4 @@
+![Ferrant Logo](assets/logos.png)
 # ferrant
 
 A lightweight, multi-provider **AI agent framework in pure Rust**. It gives you a small, dependency-light

@@ -1,3 +1,4 @@
+![Ferrant Logo](../assets/logos.png)
 # ferrant Python wrapper
 
 This directory is an optional, thin Python binding around the Rust `ferrant`
