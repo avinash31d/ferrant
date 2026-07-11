@@ -32,6 +32,8 @@ chrono = { version = "0.4", features = ["serde"] }
 base64 = "0.22"
 jsonschema = { version = "0.47", default-features = false }
 opentelemetry = { version = "0.32", optional = true }
+clap = { version = "4", features = ["derive"] }
+serde_yaml = "0.9"
 
 [[example]]
 name = "basic_agent"

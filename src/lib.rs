@@ -26,6 +26,7 @@
 //! ```
 
 pub mod agent;
+pub mod cli;
 pub mod error;
 pub mod evaluation;
 pub mod graph;

@@ -49,6 +49,12 @@ fn response_value(response: &ModelResponse) -> Value {
     })
 }
 
+#[pyfunction]
+fn run_cli(args: Vec<String>) -> PyResult<i32> {
+    ferrant::cli::execute(&args).map_err(runtime_error)?;
+    Ok(0)
+}
+
 struct PythonFunctionTool {
     name: String,
     description: String,
@@ -671,6 +677,7 @@ impl PyWorkflowGraph {
 #[pymodule]
 #[pyo3(name = "_native")]
 fn ferrant_native(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add_function(wrap_pyfunction!(run_cli, module)?)?;
     module.add_class::<PyTool>()?;
     module.add_class::<PyMcpTools>()?;
     module.add_class::<PyAgent>()?;

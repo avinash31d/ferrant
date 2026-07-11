@@ -23,6 +23,9 @@ classifiers = [
   "Typing :: Typed",
 ]
 
+[project.scripts]
+ferrant = "ferrant.cli:main"
+
 [tool.maturin]
 python-source = "python"
 module-name = "ferrant._native"

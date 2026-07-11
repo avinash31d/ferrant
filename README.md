@@ -85,6 +85,10 @@ examples/
   advanced_runtime.rs          # Graph + RAG + OTel + evaluation end to end
   advanced_workflow.rs         # Durable fan-out/retry/join/approval example
 python-wrapper/                # Optional PyO3/asyncio wrapper; Rust stays the core
+server/
+  runtime/                      # Generic Python inference server for function agents
+  docker/                       # Reusable ferrant-runner image
+  orchestrator/                 # Docker deployment orchestration contract
 ```
 
 ## Optional Python wrapper
@@ -114,6 +118,30 @@ Prebuilt wheels contain the native Rust core, so end users do not need Rust or
 Maturin. The wrapper's `examples/` directory mirrors every top-level Rust
 example and includes an advanced durable workflow matching
 `examples/advanced_workflow.rs`.
+
+## Function-agent CLI
+
+Both the Rust crate and Python package install a `ferrant` CLI. It hosts a
+plain Python function behind a standard JSON inference API, so an application
+does not need to depend on FastAPI:
+
+```bash
+ferrant init echo-agent
+cd echo-agent
+ferrant run
+```
+
+`init` creates `agent.py` and `deploy.yml`; `run` serves `GET /health` and
+`POST /infer` locally. To deploy using a reusable local Docker runner, build
+the runner image once, then deploy. Each deployment creates a new container,
+copies in the app code, and receives a dynamically allocated host port.
+
+```bash
+docker build -t ferrant-runner:latest -f server/docker/Dockerfile server
+ferrant deploy
+```
+
+See [deployment documentation](docs/deployment.md) for the handler contract.
 
 ## Quick start
 

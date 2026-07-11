@@ -3,6 +3,8 @@ from typing import Any
 
 __version__: str
 
+def run_cli(args: Sequence[str]) -> int: ...
+
 class Tool:
     def __init__(self, name: str, description: str, schema: dict[str, Any], callback: Callable[[dict[str, Any]], Any]) -> None: ...
 

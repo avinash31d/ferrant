@@ -9,3 +9,5 @@ __pycache__
 python-wrapper/target
 .venv
 python-wrapper/examples/.ferrant
+server
+docs
