@@ -241,7 +241,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ferragent"
+name = "ferrant"
 version = "0.1.4"
 dependencies = [
  "anyhow",
@@ -260,12 +260,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "ferragent-python"
+name = "ferrant-python"
 version = "0.1.4"
 dependencies = [
  "anyhow",
  "async-trait",
- "ferragent",
+ "ferrant",
  "pyo3",
  "pyo3-async-runtimes",
  "serde_json",

@@ -1,15 +1,15 @@
-# Publishing `ferragent`
+# Publishing `ferrant`
 
 End users install the prebuilt native wheel with:
 
 ```bash
-pip install ferragent
+pip install ferrant
 ```
 
-The exact `ferragent` project name was unregistered on PyPI when this package
+The exact `ferrant` project name was unregistered on PyPI when this package
 was prepared. The first release must claim it from this repository:
 
-1. Create a pending trusted publisher for project `ferragent` on PyPI.
+1. Create a pending trusted publisher for project `ferrant` on PyPI.
 2. Set its repository owner/name, workflow to `python-wheels.yml`, and
    environment to `pypi`.
 3. Push a tag matching the package version, for example `python-v0.1.0`.

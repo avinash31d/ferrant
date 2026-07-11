@@ -1,13 +1,13 @@
 use async_trait::async_trait;
-use ferragent::evaluation::{EvaluationOutput, EvaluationTarget};
-use ferragent::integrations::{ConfigurationValueKind, IntegrationComponent};
-use ferragent::llm::{Model, ModelResponse};
-use ferragent::observability::{
+use ferrant::evaluation::{EvaluationOutput, EvaluationTarget};
+use ferrant::integrations::{ConfigurationValueKind, IntegrationComponent};
+use ferrant::llm::{Model, ModelResponse};
+use ferrant::observability::{
     ModelPricing, OperationKind, OperationOutcome, PricingTable, PricingUsageRecorder, SpanStatus,
     TraceMetricsAdapter,
 };
-use ferragent::persistence::{AppendOutcome, AtomicJsonFile, DurableJsonlStore};
-use ferragent::*;
+use ferrant::persistence::{AppendOutcome, AtomicJsonFile, DurableJsonlStore};
+use ferrant::*;
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -278,7 +278,7 @@ fn curated_registry_discovers_capabilities_and_constructs_typed_components() {
 #[tokio::test]
 async fn durable_stores_recover_torn_tail_reject_middle_corruption_and_dedupe() {
     let directory = std::env::temp_dir().join(format!(
-        "ferragent-observability-test-{}",
+        "ferrant-observability-test-{}",
         uuid::Uuid::new_v4()
     ));
     let snapshot = AtomicJsonFile::<Value>::new(directory.join("snapshot.json"));

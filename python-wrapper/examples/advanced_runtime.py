@@ -1,9 +1,9 @@
 import asyncio
 import os
-from ferragent import Agent, Retriever
+from ferrant import Agent, Retriever
 
 async def main() -> None:
-    retriever = Retriever(path=".ferragent/vectors.json")
+    retriever = Retriever(path=".ferrant/vectors.json")
     await retriever.upsert([
         {"id": "graph-guide", "text": "Graph checkpoints make workflow recovery durable.", "metadata": {"source": "guide"}},
         {"id": "trace-guide", "text": "Tracing and usage records make agent runs observable.", "metadata": {"source": "guide"}},

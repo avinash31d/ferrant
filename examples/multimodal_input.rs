@@ -1,7 +1,7 @@
 //! Send text and an image to a vision-capable model.
 
-use ferragent::llm::openai::OpenAiModel;
-use ferragent::{Agent, ContentPart, Message};
+use ferrant::llm::openai::OpenAiModel;
+use ferrant::{Agent, ContentPart, Message};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

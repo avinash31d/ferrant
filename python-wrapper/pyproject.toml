@@ -3,7 +3,7 @@ requires = ["maturin>=1.9,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "ferragent"
+name = "ferrant"
 version = "0.1.4"
 description = "Fast, lightweight AI agents powered by a Rust core"
 readme = "README.md"
@@ -25,5 +25,5 @@ classifiers = [
 
 [tool.maturin]
 python-source = "python"
-module-name = "ferragent._native"
+module-name = "ferrant._native"
 bindings = "pyo3"

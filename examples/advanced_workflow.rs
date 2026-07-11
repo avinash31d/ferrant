@@ -1,12 +1,12 @@
 //! Durable fan-out, retry, join, approval, resume, and recovery.
 
-use ferragent::graph::{FileGraphStore, Graph, GraphStatus, NodeOutput, NodeRetryPolicy};
+use ferrant::graph::{FileGraphStore, Graph, GraphStatus, NodeOutput, NodeRetryPolicy};
 use serde_json::json;
 use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let directory = std::env::temp_dir().join("ferragent-advanced-workflow");
+    let directory = std::env::temp_dir().join("ferrant-advanced-workflow");
     let graph = Graph::builder("release-workflow", FileGraphStore::new(directory))
         .version("1")
         .entry("plan")

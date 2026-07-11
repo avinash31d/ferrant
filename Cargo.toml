@@ -1,12 +1,12 @@
 [package]
-name = "ferragent"
+name = "ferrant"
 version = "0.1.4"
 edition = "2021"
 description = "A lightweight, multi-provider AI agent framework in pure Rust (Agno-style)."
 license-file = "LICENSE"
-homepage = "https://github.com/avinash31d/ferragent"
-repository = "https://github.com/avinash31d/ferragent"
-documentation = "https://docs.rs/ferragent"
+homepage = "https://github.com/avinash31d/ferrant"
+repository = "https://github.com/avinash31d/ferrant"
+documentation = "https://docs.rs/ferrant"
 readme = "README.md"
 
 [features]

@@ -1,6 +1,6 @@
 import asyncio
 import os
-from ferragent import Agent, Tool
+from ferrant import Agent, Tool
 
 def weather(args: dict) -> str:
     return f"It's 22C and sunny in {args.get('city', 'unknown')}."

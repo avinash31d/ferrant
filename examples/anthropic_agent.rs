@@ -1,6 +1,6 @@
-use ferragent::llm::anthropic::AnthropicModel;
-use ferragent::tool::FunctionTool;
-use ferragent::Agent;
+use ferrant::llm::anthropic::AnthropicModel;
+use ferrant::tool::FunctionTool;
+use ferrant::Agent;
 use serde_json::json;
 
 #[tokio::main]

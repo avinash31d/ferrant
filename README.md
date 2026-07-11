@@ -1,4 +1,4 @@
-# ferragent
+# ferrant
 
 A lightweight, multi-provider **AI agent framework in pure Rust**. It gives you a small, dependency-light
 core for building tool-using LLM agents: a `Model` trait for any provider, a
@@ -94,13 +94,13 @@ durable graph scheduling all run in Rust; Python supplies an `asyncio`-friendly
 API and optional synchronous callbacks for custom tools and workflow nodes.
 
 ```bash
-pip install ferragent
+pip install ferrant
 ```
 
 ```python
 import asyncio
 import os
-from ferragent import Agent
+from ferrant import Agent
 
 async def main():
     agent = Agent.openai("gpt-5-nano", os.environ["OPENAI_API_KEY"])
@@ -117,8 +117,8 @@ example and includes an advanced durable workflow matching
 ## Quick start
 
 ```rust
-use ferragent::agent::Agent;
-use ferragent::llm::openai::OpenAiModel;
+use ferrant::agent::Agent;
+use ferrant::llm::openai::OpenAiModel;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -136,7 +136,7 @@ async fn main() -> anyhow::Result<()> {
 ### Giving the agent a tool
 
 ```rust
-use ferragent::tool::FunctionTool;
+use ferrant::tool::FunctionTool;
 use serde_json::json;
 
 let weather_tool = FunctionTool::new(
@@ -168,7 +168,7 @@ it, feed the result back, and keep going until it has a final answer.
 handshake, discovers all paginated tools, and adapts them to `Arc<dyn Tool>`:
 
 ```rust
-use ferragent::{Agent, McpClient};
+use ferrant::{Agent, McpClient};
 
 let mcp = McpClient::connect(
     "npx",
@@ -189,7 +189,7 @@ Any `Agent` can become a coordinator-callable specialist through `AgentTool`.
 `AgentTeam` provides the common coordinator pattern directly:
 
 ```rust
-use ferragent::{Agent, AgentTeam};
+use ferrant::{Agent, AgentTeam};
 
 let researcher = Agent::builder(research_model)
     .instructions("Research the task carefully.")
@@ -215,7 +215,7 @@ needs the complete `ModelResponse`; the existing `run` method remains a
 text-only convenience API.
 
 ```rust
-use ferragent::{ContentPart, Message};
+use ferrant::{ContentPart, Message};
 
 let response = agent.run_message(Message::user_parts(vec![
     ContentPart::text("Describe this image"),
@@ -243,7 +243,7 @@ attempts, exponential backoff, 60-second model timeouts, 30-second tool
 timeouts, and parallel tool calls.
 
 ```rust
-use ferragent::{Agent, ExecutionPolicy, InMemoryTracer};
+use ferrant::{Agent, ExecutionPolicy, InMemoryTracer};
 use std::time::Duration;
 
 let tracer = InMemoryTracer::default();
@@ -262,7 +262,7 @@ let run = agent.run_stream("Use the docs tool, then explain ownership", tx);
 let (response, ()) = tokio::join!(run, async {
     while let Some(event) = rx.recv().await {
         match event {
-            Ok(ferragent::StreamEvent::ToolCallDelta {
+            Ok(ferrant::StreamEvent::ToolCallDelta {
                 name, arguments_delta, ..
             }) => println!("tool {name:?}: {arguments_delta}"),
             Ok(event) => println!("{event:?}"),
@@ -309,10 +309,10 @@ available for strictly sequential jobs. A graph definition is validated before
 execution and runs a checkpointed frontier (superstep) at a time:
 
 ```rust
-use ferragent::{FileGraphStore, Graph, GraphStatus, NodeOutput, NodeRetryPolicy};
+use ferrant::{FileGraphStore, Graph, GraphStatus, NodeOutput, NodeRetryPolicy};
 use serde_json::json;
 
-let graph = Graph::builder("release", FileGraphStore::new(".ferragent/graphs"))
+let graph = Graph::builder("release", FileGraphStore::new(".ferrant/graphs"))
     .version("3")
     .entry("plan")
     .node_with_retry("plan", NodeRetryPolicy::attempts(3), |_ctx| async {
@@ -350,7 +350,7 @@ backend without changing graph definitions.
 The RAG layer covers the path from source material to citation-ready context:
 
 ```rust
-use ferragent::rag::{
+use ferrant::rag::{
     ContextFormatter, Document, Embedder, FileVectorStore, HashEmbedder,
     IngestionPipeline, LexicalReranker, RetrievalOptions, RetrievalStrategy,
     Retriever, TextChunker, VectorStore,
@@ -360,7 +360,7 @@ use std::sync::Arc;
 
 let embedder: Arc<dyn Embedder> = Arc::new(HashEmbedder::new(256));
 let store: Arc<dyn VectorStore> =
-    Arc::new(FileVectorStore::open(".ferragent/knowledge.json")?);
+    Arc::new(FileVectorStore::open(".ferrant/knowledge.json")?);
 let pipeline = IngestionPipeline::from_shared(
     embedder.clone(), store.clone(), Arc::new(TextChunker::new(800, 100)),
 );
@@ -414,12 +414,12 @@ operational records:
   durable operational logs.
 
 ```rust
-use ferragent::{AppendOutcome, EvaluationBaselineStore, UsageLogStore};
+use ferrant::{AppendOutcome, EvaluationBaselineStore, UsageLogStore};
 
-let usage_log = UsageLogStore::new(".ferragent/usage.jsonl");
+let usage_log = UsageLogStore::new(".ferrant/usage.jsonl");
 let outcome = usage_log.append_idempotent("provider-request-42", usage_record).await?;
 
-let baselines = EvaluationBaselineStore::new(".ferragent/eval-baseline.json");
+let baselines = EvaluationBaselineStore::new(".ferrant/eval-baseline.json");
 baselines.save(&evaluation_report).await?;
 ```
 
@@ -430,10 +430,10 @@ public storage traits with database transactions and worker leases.
 ### Persisted sessions
 
 ```rust
-use ferragent::FileStorage;
+use ferrant::FileStorage;
 
 let mut agent = Agent::builder(model)
-    .storage(FileStorage::new(".ferragent/sessions"))
+    .storage(FileStorage::new(".ferrant/sessions"))
     .build();
 
 agent.run_session("user-42", "What is 42 * 17?").await?;
@@ -449,7 +449,7 @@ cover agent runs, model calls, tools, timeouts, outcomes, and latency, with
 aggregate snapshots by operation and model.
 
 ```rust
-use ferragent::{
+use ferrant::{
     Agent, CompositeTracer, InMemoryMetricsCollector, InMemorySpanExporter,
     InMemoryUsageCollector, OpenTelemetryAdapter,
 };
@@ -483,12 +483,12 @@ application's configured OpenTelemetry global tracer directly, enable the
 optional feature and install the SDK/exporter in the application:
 
 ```toml
-ferragent = { version = "0.1", features = ["opentelemetry"] }
+ferrant = { version = "0.1", features = ["opentelemetry"] }
 ```
 
 ```rust
-let agent = ferragent::Agent::builder(model)
-    .tracer(ferragent::OpenTelemetryTracer)
+let agent = ferrant::Agent::builder(model)
+    .tracer(ferrant::OpenTelemetryTracer)
     .build();
 ```
 
@@ -501,8 +501,8 @@ match, substring containment, recursive JSON subsets, and latency; closure
 adapters support model-graded or domain-specific targets and scores.
 
 ```rust
-use ferragent::evaluation::{ContainsScorer, EvaluationCase};
-use ferragent::{
+use ferrant::evaluation::{ContainsScorer, EvaluationCase};
+use ferrant::{
     AgentEvaluationTarget, EvaluationDataset, EvaluationRunner,
     RegressionThresholds,
 };
@@ -539,7 +539,7 @@ Configuration fields declare type, source, required/secret status, and missing
 environment variables without reading secrets themselves.
 
 ```rust
-use ferragent::{IntegrationCapability, IntegrationRegistry};
+use ferrant::{IntegrationCapability, IntegrationRegistry};
 
 let registry = IntegrationRegistry::curated();
 for integration in registry.by_capability(IntegrationCapability::StreamingToolCalls) {
@@ -581,7 +581,7 @@ cargo test --test live_integrations -- --ignored --nocapture
 ### Switching providers
 
 ```rust
-use ferragent::llm::anthropic::AnthropicModel;
+use ferrant::llm::anthropic::AnthropicModel;
 
 let model = AnthropicModel::new("claude-sonnet-4-6", std::env::var("ANTHROPIC_API_KEY")?)
     .with_max_tokens(1024);
@@ -594,8 +594,8 @@ Point `OpenAiModel` at any server implementing the OpenAI Chat Completions API,
 such as llama.cpp, Ollama, vLLM, Groq, or OpenRouter:
 
 ```rust
-use ferragent::llm::openai::OpenAiModel;
-use ferragent::Agent;
+use ferrant::llm::openai::OpenAiModel;
+use ferrant::Agent;
 
 let model = OpenAiModel::new("my-model", "not-needed")
     .with_base_url("http://127.0.0.1:8080/v1");

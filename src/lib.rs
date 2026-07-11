@@ -1,4 +1,4 @@
-//! **ferragent** — a lightweight, multi-provider AI agent framework in pure Rust,
+//! **ferrant** — a lightweight, multi-provider AI agent framework in pure Rust,
 //! inspired by [Agno](https://github.com/agno-agi/agno).
 //!
 //! Core pieces:
@@ -9,8 +9,8 @@
 //! - [`memory::Storage`] — pluggable session persistence.
 //!
 //! ```no_run
-//! use ferragent::agent::Agent;
-//! use ferragent::llm::openai::OpenAiModel;
+//! use ferrant::agent::Agent;
+//! use ferrant::llm::openai::OpenAiModel;
 //!
 //! # #[tokio::main]
 //! # async fn main() -> anyhow::Result<()> {

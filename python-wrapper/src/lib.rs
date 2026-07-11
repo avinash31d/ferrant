@@ -1,13 +1,13 @@
 use anyhow::Context;
 use async_trait::async_trait;
-use ferragent::graph::{FileGraphStore, Graph, NodeContext, NodeOutput, NodeRetryPolicy};
-use ferragent::llm::anthropic::AnthropicModel;
-use ferragent::llm::openai::OpenAiModel;
-use ferragent::rag::{
+use ferrant::graph::{FileGraphStore, Graph, NodeContext, NodeOutput, NodeRetryPolicy};
+use ferrant::llm::anthropic::AnthropicModel;
+use ferrant::llm::openai::OpenAiModel;
+use ferrant::rag::{
     Document, Embedder, FileVectorStore, HashEmbedder, InMemoryVectorStore, LexicalReranker,
     Retriever as RustRetriever, VectorStore,
 };
-use ferragent::{
+use ferrant::{
     Agent as RustAgent, ContentPart, FileStorage, McpClient, Message, ModelResponse, StreamEvent,
     Tool as RustTool,
 };
@@ -312,7 +312,7 @@ impl PyAgent {
         let agent = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let (sender, mut receiver) =
-                tokio::sync::mpsc::channel::<ferragent::Result<StreamEvent>>(64);
+                tokio::sync::mpsc::channel::<ferrant::Result<StreamEvent>>(64);
             let mut locked = agent.lock().await;
             let consume = async {
                 while let Some(event) = receiver.recv().await {
@@ -670,7 +670,7 @@ impl PyWorkflowGraph {
 
 #[pymodule]
 #[pyo3(name = "_native")]
-fn ferragent_native(module: &Bound<'_, PyModule>) -> PyResult<()> {
+fn ferrant_native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyTool>()?;
     module.add_class::<PyMcpTools>()?;
     module.add_class::<PyAgent>()?;

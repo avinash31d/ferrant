@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use ferragent::rag::*;
+use ferrant::rag::*;
 use serde_json::json;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -15,7 +15,7 @@ fn document(id: &str, text: &str, metadata: serde_json::Value) -> Document {
 
 fn temporary_store_path() -> std::path::PathBuf {
     std::env::temp_dir()
-        .join(format!("ferragent-rag-{}", uuid::Uuid::new_v4()))
+        .join(format!("ferrant-rag-{}", uuid::Uuid::new_v4()))
         .join("vectors.json")
 }
 

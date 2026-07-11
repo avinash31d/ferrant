@@ -339,7 +339,7 @@ impl Model for OpenAiModel {
         let mut body = self.request_body(messages, tools);
         body["response_format"] = json!({
             "type":"json_schema",
-            "json_schema":{"name":"ferragent_response", "strict":true, "schema":schema}
+            "json_schema":{"name":"ferrant_response", "strict":true, "schema":schema}
         });
         let data = self.send(&body).await?;
         self.parse_response(&data)

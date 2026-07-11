@@ -8,7 +8,7 @@ mod workspace;
 use anyhow::{bail, Context, Result};
 use approval::ApprovalGate;
 use config::{prompt, select_provider};
-use ferragent::Agent;
+use ferrant::Agent;
 use sandbox::Sandbox;
 use state::SessionState;
 use std::path::PathBuf;

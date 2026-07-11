@@ -1,6 +1,6 @@
 import asyncio
 import os
-from ferragent import Agent, McpTools
+from ferrant import Agent, McpTools
 
 async def main() -> None:
     mcp = await McpTools.connect("npx", ["-y", "@modelcontextprotocol/server-filesystem", "."])

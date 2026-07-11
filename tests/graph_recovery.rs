@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use ferragent::graph::{
+use ferrant::graph::{
     FileGraphStore, Graph, GraphCheckpoint, GraphCheckpointStore, GraphError, GraphStatus,
     GraphStoreError, GraphStoreResult, GraphValidationCode, InMemoryGraphStore,
     NodeExecutionStatus, NodeOutput, NodeRetryPolicy,
@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::Barrier;
 
-async fn no_op(_: ferragent::graph::NodeContext) -> anyhow::Result<NodeOutput> {
+async fn no_op(_: ferrant::graph::NodeContext) -> anyhow::Result<NodeOutput> {
     Ok(NodeOutput::no_update())
 }
 
@@ -360,7 +360,7 @@ async fn recover_reuses_idempotency_key_after_lost_node_result() {
 #[tokio::test]
 async fn file_store_survives_graph_reconstruction_and_checks_revisions() {
     let directory =
-        std::env::temp_dir().join(format!("ferragent-graph-recovery-{}", uuid::Uuid::new_v4()));
+        std::env::temp_dir().join(format!("ferrant-graph-recovery-{}", uuid::Uuid::new_v4()));
     let available = Arc::new(AtomicBool::new(false));
     let first_available = available.clone();
     let first_store = FileGraphStore::new(&directory);
@@ -460,7 +460,7 @@ async fn bounds_cycles_and_rejects_conflicting_parallel_updates() {
     assert_eq!(conflict_state.status, GraphStatus::Failed);
     assert_eq!(
         conflict_state.last_failure.unwrap().kind,
-        ferragent::graph::GraphFailureKind::StateConflict
+        ferrant::graph::GraphFailureKind::StateConflict
     );
 }
 

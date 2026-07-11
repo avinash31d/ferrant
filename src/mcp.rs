@@ -109,7 +109,7 @@ impl McpClient {
                 json!({
                     "protocolVersion": PROTOCOL_VERSION,
                     "capabilities": {},
-                    "clientInfo": {"name":"ferragent", "version":env!("CARGO_PKG_VERSION")}
+                    "clientInfo": {"name":"ferrant", "version":env!("CARGO_PKG_VERSION")}
                 }),
             )
             .await?;

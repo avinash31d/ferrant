@@ -1,7 +1,7 @@
-use ferragent::llm::anthropic::AnthropicModel;
-use ferragent::llm::openai::OpenAiModel;
-use ferragent::llm::Model;
-use ferragent::{Message, StreamEvent, ToolSpec};
+use ferrant::llm::anthropic::AnthropicModel;
+use ferrant::llm::openai::OpenAiModel;
+use ferrant::llm::Model;
+use ferrant::{Message, StreamEvent, ToolSpec};
 use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -117,8 +117,8 @@ fn full_json_schema_validation_catches_advanced_constraints() {
         "properties":{"code":{"type":"string","pattern":"^[A-Z]{3}$"}},
         "required":["code"], "additionalProperties":false
     });
-    assert!(ferragent::validate_json(&schema, &json!({"code":"ABC"})).is_ok());
-    assert!(ferragent::validate_json(&schema, &json!({"code":"bad","extra":1})).is_err());
+    assert!(ferrant::validate_json(&schema, &json!({"code":"ABC"})).is_ok());
+    assert!(ferrant::validate_json(&schema, &json!({"code":"bad","extra":1})).is_err());
 }
 
 #[tokio::test]
@@ -158,7 +158,7 @@ async fn anthropic_stream_assembles_partial_json_tool_call() {
 #[tokio::test]
 async fn anthropic_structured_output_uses_forced_schema_tool() {
     let response = json!({
-        "content":[{"type":"tool_use","id":"tool_1","name":"ferragent_structured_output","input":{"answer":42}}],
+        "content":[{"type":"tool_use","id":"tool_1","name":"ferrant_structured_output","input":{"answer":42}}],
         "usage":{"input_tokens":5,"output_tokens":4}
     }).to_string();
     let (base_url, request) = mock_server(response, "application/json").await;
@@ -176,7 +176,7 @@ async fn anthropic_structured_output_uses_forced_schema_tool() {
     let body = request.await.unwrap();
     assert_eq!(
         body.pointer("/tool_choice/name"),
-        Some(&json!("ferragent_structured_output"))
+        Some(&json!("ferrant_structured_output"))
     );
     assert_eq!(body.pointer("/tools/0/input_schema"), Some(&schema));
 }

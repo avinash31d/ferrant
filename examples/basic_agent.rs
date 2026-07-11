@@ -1,6 +1,6 @@
-use ferragent::llm::openai::OpenAiModel;
-use ferragent::tool::FunctionTool;
-use ferragent::Agent;
+use ferrant::llm::openai::OpenAiModel;
+use ferrant::tool::FunctionTool;
+use ferrant::Agent;
 use serde_json::json;
 
 #[tokio::main]

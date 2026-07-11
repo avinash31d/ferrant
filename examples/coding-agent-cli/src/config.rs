@@ -1,11 +1,11 @@
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
-use ferragent::error::Result as AgentResult;
-use ferragent::llm::anthropic::AnthropicModel;
-use ferragent::llm::openai::OpenAiModel;
-use ferragent::llm::{Model, ModelResponse};
-use ferragent::message::Message;
-use ferragent::tool::ToolSpec;
+use ferrant::error::Result as AgentResult;
+use ferrant::llm::anthropic::AnthropicModel;
+use ferrant::llm::openai::OpenAiModel;
+use ferrant::llm::{Model, ModelResponse};
+use ferrant::message::Message;
+use ferrant::tool::ToolSpec;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};

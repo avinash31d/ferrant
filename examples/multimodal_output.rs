@@ -1,8 +1,8 @@
 //! Request text plus generated audio and save the audio output.
 
 use base64::prelude::*;
-use ferragent::llm::openai::OpenAiModel;
-use ferragent::{Agent, ContentPart, Message};
+use ferrant::llm::openai::OpenAiModel;
+use ferrant::{Agent, ContentPart, Message};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
