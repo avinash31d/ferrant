@@ -40,6 +40,7 @@ pub mod orchestration;
 pub mod persistence;
 pub mod rag;
 pub mod runtime;
+pub mod skills;
 pub mod structured;
 pub mod tool;
 pub mod tracing;
@@ -85,6 +86,7 @@ pub use rag::{
     VectorStore,
 };
 pub use runtime::{ExecutionPolicy, StreamEvent};
+pub use skills::{Skill, SkillCatalog, SkillError, SkillLimits, SkillMetadata, SkillSource};
 pub use structured::{parse_structured, validate_json};
 pub use tool::{FunctionTool, Tool, ToolSpec};
 #[cfg(feature = "opentelemetry")]
