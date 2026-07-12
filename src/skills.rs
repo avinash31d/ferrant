@@ -498,7 +498,7 @@ fn materialize_git(source: &SkillSource, refresh: bool) -> Result<PathBuf, Skill
 
 fn selected_root(checkout: &Path, subdirectory: &Option<PathBuf>) -> Result<PathBuf, SkillError> {
     let checkout_root = checkout.canonicalize().map_err(|source| SkillError::Io {
-        path: checkout.clone(),
+        path: checkout.to_path_buf(),
         source,
     })?;
     let selected = match subdirectory {
