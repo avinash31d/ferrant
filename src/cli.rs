@@ -179,8 +179,13 @@ fn load_config(path: &Path) -> Result<(DeployConfig, PathBuf)> {
     if !config.handler.contains(':') {
         bail!("handler must use module:function syntax, for example agent:reply");
     }
-    let app_dir = path
-        .parent()
+    let app_dir = config_directory(path)?;
+    Ok((config, app_dir))
+}
+
+fn config_directory(path: &Path) -> Result<PathBuf> {
+    path.parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."))
         .canonicalize()
         .with_context(|| {
@@ -188,8 +193,7 @@ fn load_config(path: &Path) -> Result<(DeployConfig, PathBuf)> {
                 "failed to resolve application directory for {}",
                 path.display()
             )
-        })?;
-    Ok((config, app_dir))
+        })
 }
 
 fn materialize_runtime() -> Result<PathBuf> {
@@ -223,5 +227,13 @@ mod tests {
         fs::write(directory.join("agent.py"), "pass").unwrap();
         assert!(!package_application(&directory).unwrap().is_empty());
         fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn resolves_a_relative_config_in_the_current_directory() {
+        assert_eq!(
+            config_directory(Path::new("deploy.yml")).unwrap(),
+            Path::new(".").canonicalize().unwrap()
+        );
     }
 }
