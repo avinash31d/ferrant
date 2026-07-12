@@ -364,11 +364,11 @@ impl CacheLock {
                         chrono::Utc::now().timestamp(),
                         uuid::Uuid::new_v4()
                     );
-                    file.write_all(record.as_bytes())
-                        .map_err(|source| SkillError::Io {
-                            path: path.clone(),
-                            source,
-                        })?;
+                    if let Err(source) = file.write_all(record.as_bytes()) {
+                        drop(file);
+                        let _ = fs::remove_file(&path);
+                        return Err(SkillError::Io { path, source });
+                    }
                     return Ok(Self(path));
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -558,6 +558,15 @@ fn replace_checkout(staged: &Path, checkout: &Path) -> Result<(), SkillError> {
 }
 
 fn checkout_target(checkout: &Path, git_ref: Option<&str>) -> Result<(), SkillError> {
+    let target = resolve_target(checkout, git_ref)?;
+    GitRepository::run(
+        Some(checkout),
+        &["checkout", "--detach", "--force", &target],
+    )?;
+    GitRepository::run(Some(checkout), &["reset", "--hard", &target])
+}
+
+fn resolve_target(checkout: &Path, git_ref: Option<&str>) -> Result<String, SkillError> {
     let requested = git_ref.unwrap_or("refs/remotes/origin/HEAD");
     let mut candidates = Vec::new();
     if let Some(branch) = requested.strip_prefix("refs/heads/") {
@@ -577,15 +586,10 @@ fn checkout_target(checkout: &Path, git_ref: Option<&str>) -> Result<(), SkillEr
             break;
         }
     }
-    let target = target.ok_or_else(|| SkillError::Git {
+    target.ok_or_else(|| SkillError::Git {
         command: "git rev-parse".into(),
         message: format!("unknown ref {requested}"),
-    })?;
-    GitRepository::run(
-        Some(checkout),
-        &["checkout", "--detach", "--force", &target],
-    )?;
-    GitRepository::run(Some(checkout), &["reset", "--hard", &target])
+    })
 }
 
 fn source_cache_key(
@@ -702,7 +706,26 @@ fn cache_is_valid(
     if String::from_utf8_lossy(&head).trim() != manifest.commit {
         return false;
     }
-    GitRepository::run(Some(checkout), &["diff", "--quiet", "HEAD", "--"]).is_ok()
+    let Ok(origin) = GitRepository::output(Some(checkout), &["remote", "get-url", "origin"]) else {
+        return false;
+    };
+    if String::from_utf8_lossy(&origin).trim() != repository {
+        return false;
+    }
+    if resolve_target(checkout, git_ref.as_deref()).ok().as_deref()
+        != Some(manifest.commit.as_str())
+    {
+        return false;
+    }
+    let Ok(status) = GitRepository::output(
+        Some(checkout),
+        &["status", "--porcelain", "--untracked-files=all"],
+    ) else {
+        return false;
+    };
+    String::from_utf8_lossy(&status)
+        .lines()
+        .all(|line| line == format!("?? {SOURCE_MANIFEST}"))
 }
 
 fn discover(

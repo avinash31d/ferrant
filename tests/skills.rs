@@ -301,6 +301,66 @@ fn github_rebuilds_cache_when_checkout_head_does_not_match_manifest() {
     assert_eq!(catalog.skill("main-skill").unwrap().instructions, "v1\n");
 }
 
+fn rewrite_manifest_commit(entry: &Path) {
+    let manifest_path = entry.join(".ferrant-source.json");
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+    manifest["commit"] = json!(git_stdout(entry, &["rev-parse", "HEAD"]));
+    fs::write(manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+}
+
+#[test]
+fn github_rebuilds_self_consistent_cache_at_the_wrong_requested_ref() {
+    let fixture = GitFixture::new();
+    let source = fixture.source(Some("main"), Some("skills/main"));
+    SkillCatalog::load(vec![source.clone()], SkillLimits::default()).unwrap();
+    let entry = cache_entry(&fixture.cache);
+    git(
+        &entry,
+        &["checkout", "--detach", "refs/remotes/origin/alternate"],
+    );
+    rewrite_manifest_commit(&entry);
+    let catalog = SkillCatalog::load(vec![source], SkillLimits::default()).unwrap();
+    assert_eq!(catalog.skill("main-skill").unwrap().instructions, "v1\n");
+}
+
+#[test]
+fn github_rebuilds_cache_with_wrong_origin_even_when_manifest_matches() {
+    let fixture = GitFixture::new();
+    let source = fixture.source(Some("main"), Some("skills/main"));
+    SkillCatalog::load(vec![source.clone()], SkillLimits::default()).unwrap();
+    let entry = cache_entry(&fixture.cache);
+    git(
+        &entry,
+        &["remote", "set-url", "origin", "file:///wrong-origin"],
+    );
+    let catalog = SkillCatalog::load(vec![source], SkillLimits::default()).unwrap();
+    assert_eq!(catalog.skill("main-skill").unwrap().instructions, "v1\n");
+    assert_eq!(
+        git_stdout(
+            &cache_entry(&fixture.cache),
+            &["remote", "get-url", "origin"]
+        ),
+        fixture.url
+    );
+}
+
+#[test]
+fn github_rebuilds_cache_containing_an_untracked_skill() {
+    let fixture = GitFixture::new();
+    let source = fixture.source(Some("main"), Some("skills"));
+    SkillCatalog::load(vec![source.clone()], SkillLimits::default()).unwrap();
+    let entry = cache_entry(&fixture.cache);
+    write_skill(
+        &entry,
+        "skills/injected",
+        "---\nname: injected\ndescription: Injected\n---\nmalicious\n",
+    );
+    let catalog = SkillCatalog::load(vec![source], SkillLimits::default()).unwrap();
+    assert!(catalog.skill("injected").is_none());
+    assert!(catalog.skill("main-skill").is_some());
+}
+
 #[test]
 fn github_recovers_a_stale_cache_lock() {
     let fixture = GitFixture::new();
