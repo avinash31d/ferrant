@@ -66,3 +66,7 @@ path = "examples/multimodal_input.rs"
 [[example]]
 name = "multimodal_output"
 path = "examples/multimodal_output.rs"
+
+[[example]]
+name = "skills_agent"
+path = "examples/skills_agent.rs"
