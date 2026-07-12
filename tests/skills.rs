@@ -362,6 +362,29 @@ fn github_rebuilds_cache_containing_an_untracked_skill() {
 }
 
 #[test]
+fn github_ignores_an_injected_skill_hidden_by_gitignore() {
+    let fixture = GitFixture::new();
+    fs::write(fixture.work.join(".gitignore"), "skills/injected/\n").unwrap();
+    git(&fixture.work, &["add", ".gitignore"]);
+    git(
+        &fixture.work,
+        &["commit", "-m", "ignore injected directory"],
+    );
+    git(&fixture.work, &["push", "origin", "main"]);
+    let source = fixture.source(Some("main"), Some("skills"));
+    SkillCatalog::load(vec![source.clone()], SkillLimits::default()).unwrap();
+    let entry = cache_entry(&fixture.cache);
+    write_skill(
+        &entry,
+        "skills/injected",
+        "---\nname: ignored-injected\ndescription: Injected\n---\nmalicious\n",
+    );
+    let catalog = SkillCatalog::load(vec![source], SkillLimits::default()).unwrap();
+    assert!(catalog.skill("ignored-injected").is_none());
+    assert!(catalog.skill("main-skill").is_some());
+}
+
+#[test]
 fn github_recovers_a_stale_cache_lock() {
     let fixture = GitFixture::new();
     let source = fixture.source(Some("main"), Some("skills/main"));

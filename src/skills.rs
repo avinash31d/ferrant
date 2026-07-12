@@ -127,7 +127,7 @@ impl SkillCatalog {
                 SkillSource::Local { root } => discover(root, source, &mut files)?,
                 SkillSource::GitHub { .. } => {
                     let root = materialize_git(source, refresh)?;
-                    discover(&root, source, &mut files)?;
+                    discover_git(&root, source, &mut files)?;
                 }
             }
         }
@@ -750,6 +750,46 @@ fn discover(
             discover(&entry.path(), source, files)?;
         } else if file_type.is_file() && entry.file_name() == "SKILL.md" {
             files.push((entry.path(), source.clone()));
+        }
+    }
+    Ok(())
+}
+
+fn discover_git(
+    selected_root: &Path,
+    source: &SkillSource,
+    files: &mut Vec<(PathBuf, SkillSource)>,
+) -> Result<(), SkillError> {
+    let checkout_bytes =
+        GitRepository::output(Some(selected_root), &["rev-parse", "--show-toplevel"])?;
+    let checkout = PathBuf::from(String::from_utf8_lossy(&checkout_bytes).trim().to_owned())
+        .canonicalize()
+        .map_err(|source| SkillError::Io {
+            path: selected_root.to_path_buf(),
+            source,
+        })?;
+    let mut discovered = Vec::new();
+    discover(selected_root, source, &mut discovered)?;
+    for (path, source) in discovered {
+        let relative =
+            path.strip_prefix(&checkout)
+                .map_err(|_| SkillError::GitSubdirectoryOutside {
+                    path: path.clone(),
+                    root: checkout.clone(),
+                })?;
+        let status = Command::new("git")
+            .current_dir(&checkout)
+            .arg("ls-files")
+            .arg("--error-unmatch")
+            .arg("--")
+            .arg(relative)
+            .output()
+            .map_err(|source| SkillError::Io {
+                path: path.clone(),
+                source,
+            })?;
+        if status.status.success() {
+            files.push((path, source));
         }
     }
     Ok(())
