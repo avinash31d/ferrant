@@ -1,7 +1,9 @@
 use crate::tool::Tool;
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 use serde_yaml::Value;
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::Read;
@@ -166,6 +168,11 @@ impl SkillCatalog {
         summary
     }
 
+    /// Reads a resource from a trusted local skill package.
+    ///
+    /// The package must not be concurrently mutated while this call is in progress. Path
+    /// canonicalization and containment checks reject stable symlink escapes, but this API does
+    /// not claim to defend against an actor replacing path components during the read.
     pub fn read_resource(&self, skill: &str, relative: &Path) -> Result<String, SkillError> {
         let skill = self
             .skills
@@ -347,10 +354,28 @@ struct CacheLock(PathBuf);
 
 impl CacheLock {
     fn acquire(path: PathBuf) -> Result<Self, SkillError> {
-        for _ in 0..500 {
+        for _ in 0..50 {
             match File::options().write(true).create_new(true).open(&path) {
-                Ok(_) => return Ok(Self(path)),
+                Ok(mut file) => {
+                    use std::io::Write;
+                    let record = format!(
+                        "pid={}\ntimestamp={}\nnonce={}\n",
+                        std::process::id(),
+                        chrono::Utc::now().timestamp(),
+                        uuid::Uuid::new_v4()
+                    );
+                    file.write_all(record.as_bytes())
+                        .map_err(|source| SkillError::Io {
+                            path: path.clone(),
+                            source,
+                        })?;
+                    return Ok(Self(path));
+                }
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    if lock_is_stale(&path) {
+                        let _ = fs::remove_file(&path);
+                        continue;
+                    }
                     thread::sleep(Duration::from_millis(10));
                 }
                 Err(source) => return Err(SkillError::Io { path, source }),
@@ -361,6 +386,58 @@ impl CacheLock {
             message: format!("timed out waiting for {}", path.display()),
         })
     }
+}
+
+fn lock_is_stale(path: &Path) -> bool {
+    let Ok(text) = fs::read_to_string(path) else {
+        return false;
+    };
+    let Some(pid) = text
+        .lines()
+        .find_map(|line| line.strip_prefix("pid="))
+        .and_then(|pid| pid.parse::<u32>().ok())
+    else {
+        return false;
+    };
+    if text
+        .lines()
+        .find_map(|line| line.strip_prefix("timestamp="))
+        .and_then(|value| value.parse::<i64>().ok())
+        .is_none()
+        || text
+            .lines()
+            .find_map(|line| line.strip_prefix("nonce="))
+            .filter(|value| !value.is_empty())
+            .is_none()
+    {
+        return false;
+    }
+    if pid == std::process::id() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        !Path::new("/proc").join(pid.to_string()).exists()
+    }
+    #[cfg(windows)]
+    {
+        let filter = format!("PID eq {pid}");
+        Command::new("tasklist")
+            .args(["/FI", &filter, "/NH"])
+            .output()
+            .map(|output| !String::from_utf8_lossy(&output.stdout).contains(&pid.to_string()))
+            .unwrap_or(false)
+    }
+}
+
+const SOURCE_MANIFEST: &str = ".ferrant-source.json";
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+struct SourceManifest {
+    repository: String,
+    git_ref: Option<String>,
+    subdirectory_native_hex: Option<String>,
+    commit: String,
 }
 
 impl Drop for CacheLock {
@@ -400,18 +477,19 @@ fn materialize_git(source: &SkillSource, refresh: bool) -> Result<PathBuf, Skill
         source,
     })?;
     let key = source_cache_key(repository, git_ref.as_deref(), subdirectory.as_deref());
-    let checkout = cache_dir.join(format!("{key:016x}"));
-    if !checkout.exists() || refresh {
-        let _lock = CacheLock::acquire(cache_dir.join(format!("{key:016x}.lock")))?;
-        if !checkout.exists() || refresh {
+    let checkout = cache_dir.join(&key);
+    if !cache_is_valid(&checkout, repository, git_ref, subdirectory) || refresh {
+        let _lock = CacheLock::acquire(cache_dir.join(format!("{key}.lock")))?;
+        if !cache_is_valid(&checkout, repository, git_ref, subdirectory) || refresh {
             let nonce = NEXT_GIT_TEMP.fetch_add(1, Ordering::Relaxed);
             let staged_path =
-                cache_dir.join(format!(".{key:016x}.{}.{}.tmp", std::process::id(), nonce));
+                cache_dir.join(format!(".{key}.{}.{}.tmp", std::process::id(), nonce));
             let staged = TempCheckout(staged_path);
             let target = staged.0.to_string_lossy().into_owned();
             GitRepository::run(None, &["clone", "--no-checkout", repository, &target])?;
             checkout_target(&staged.0, git_ref.as_deref())?;
             selected_root(&staged.0, subdirectory)?;
+            write_manifest(&staged.0, repository, git_ref, subdirectory)?;
             replace_checkout(&staged.0, &checkout)?;
         }
     }
@@ -510,34 +588,35 @@ fn checkout_target(checkout: &Path, git_ref: Option<&str>) -> Result<(), SkillEr
     GitRepository::run(Some(checkout), &["reset", "--hard", &target])
 }
 
-fn source_cache_key(repository: &str, git_ref: Option<&str>, subdirectory: Option<&Path>) -> u64 {
+fn source_cache_key(
+    repository: &str,
+    git_ref: Option<&str>,
+    subdirectory: Option<&Path>,
+) -> String {
     let mut bytes = Vec::new();
     append_field(&mut bytes, 1, repository.as_bytes());
-    append_field(&mut bytes, 2, git_ref.unwrap_or("").as_bytes());
+    append_optional_field(&mut bytes, 2, git_ref.map(str::as_bytes));
     #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStrExt;
-        append_field(
+        append_optional_field(
             &mut bytes,
             3,
-            subdirectory
-                .unwrap_or_else(|| Path::new(""))
-                .as_os_str()
-                .as_bytes(),
+            subdirectory.map(|path| path.as_os_str().as_bytes()),
         );
     }
     #[cfg(windows)]
     {
         use std::os::windows::ffi::OsStrExt;
-        let native: Vec<u8> = subdirectory
-            .unwrap_or_else(|| Path::new(""))
-            .as_os_str()
-            .encode_wide()
-            .flat_map(u16::to_le_bytes)
-            .collect();
-        append_field(&mut bytes, 3, &native);
+        let native = subdirectory.map(|path| {
+            path.as_os_str()
+                .encode_wide()
+                .flat_map(u16::to_le_bytes)
+                .collect::<Vec<_>>()
+        });
+        append_optional_field(&mut bytes, 3, native.as_deref());
     }
-    fnv1a(&bytes)
+    format!("{:x}", Sha256::digest(&bytes))
 }
 
 fn append_field(identity: &mut Vec<u8>, tag: u8, value: &[u8]) {
@@ -546,13 +625,84 @@ fn append_field(identity: &mut Vec<u8>, tag: u8, value: &[u8]) {
     identity.extend_from_slice(value);
 }
 
-fn fnv1a(bytes: &[u8]) -> u64 {
-    let mut hash = 0xcbf29ce484222325u64;
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100000001b3);
+fn append_optional_field(identity: &mut Vec<u8>, tag: u8, value: Option<&[u8]>) {
+    identity.push(tag);
+    identity.push(u8::from(value.is_some()));
+    if let Some(value) = value {
+        identity.extend_from_slice(&(value.len() as u64).to_le_bytes());
+        identity.extend_from_slice(value);
     }
-    hash
+}
+
+fn native_path_hex(path: Option<&Path>) -> Option<String> {
+    path.map(|path| {
+        #[cfg(unix)]
+        let bytes = {
+            use std::os::unix::ffi::OsStrExt;
+            path.as_os_str().as_bytes().to_vec()
+        };
+        #[cfg(windows)]
+        let bytes = {
+            use std::os::windows::ffi::OsStrExt;
+            path.as_os_str()
+                .encode_wide()
+                .flat_map(u16::to_le_bytes)
+                .collect::<Vec<_>>()
+        };
+        bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    })
+}
+
+fn write_manifest(
+    checkout: &Path,
+    repository: &str,
+    git_ref: &Option<String>,
+    subdirectory: &Option<PathBuf>,
+) -> Result<(), SkillError> {
+    let commit = String::from_utf8_lossy(&GitRepository::output(
+        Some(checkout),
+        &["rev-parse", "HEAD"],
+    )?)
+    .trim()
+    .to_owned();
+    let manifest = SourceManifest {
+        repository: repository.to_owned(),
+        git_ref: git_ref.clone(),
+        subdirectory_native_hex: native_path_hex(subdirectory.as_deref()),
+        commit,
+    };
+    let bytes = serde_json::to_vec(&manifest).expect("source manifest serializes");
+    fs::write(checkout.join(SOURCE_MANIFEST), bytes).map_err(|source| SkillError::Io {
+        path: checkout.join(SOURCE_MANIFEST),
+        source,
+    })
+}
+
+fn cache_is_valid(
+    checkout: &Path,
+    repository: &str,
+    git_ref: &Option<String>,
+    subdirectory: &Option<PathBuf>,
+) -> bool {
+    let Ok(bytes) = fs::read(checkout.join(SOURCE_MANIFEST)) else {
+        return false;
+    };
+    let Ok(manifest) = serde_json::from_slice::<SourceManifest>(&bytes) else {
+        return false;
+    };
+    if manifest.repository != repository
+        || &manifest.git_ref != git_ref
+        || manifest.subdirectory_native_hex != native_path_hex(subdirectory.as_deref())
+    {
+        return false;
+    }
+    let Ok(head) = GitRepository::output(Some(checkout), &["rev-parse", "HEAD"]) else {
+        return false;
+    };
+    if String::from_utf8_lossy(&head).trim() != manifest.commit {
+        return false;
+    }
+    GitRepository::run(Some(checkout), &["diff", "--quiet", "HEAD", "--"]).is_ok()
 }
 
 fn discover(

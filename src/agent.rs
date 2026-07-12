@@ -44,6 +44,7 @@ pub struct AgentBuilder {
     tracer: Option<Arc<dyn Tracer>>,
     usage_recorder: Option<Arc<dyn UsageRecorder>>,
     metrics_recorder: Option<Arc<dyn MetricsRecorder>>,
+    skills_enabled: bool,
 }
 
 impl AgentBuilder {
@@ -58,6 +59,7 @@ impl AgentBuilder {
             tracer: None,
             usage_recorder: None,
             metrics_recorder: None,
+            skills_enabled: false,
         }
     }
 
@@ -67,12 +69,18 @@ impl AgentBuilder {
     }
 
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
-        self.tools.push(Arc::new(tool));
+        if !self.skills_enabled || !is_reserved_skill_tool(tool.name()) {
+            self.tools.push(Arc::new(tool));
+        }
         self
     }
 
     pub fn tools(mut self, tools: Vec<Arc<dyn Tool>>) -> Self {
-        self.tools.extend(tools);
+        self.tools.extend(
+            tools
+                .into_iter()
+                .filter(|tool| !self.skills_enabled || !is_reserved_skill_tool(tool.name())),
+        );
         self
     }
 
@@ -83,6 +91,9 @@ impl AgentBuilder {
             None => summary,
         });
         let catalog = Arc::new(catalog);
+        self.skills_enabled = true;
+        self.tools
+            .retain(|tool| !is_reserved_skill_tool(tool.name()));
         self.tools
             .push(Arc::new(LoadSkillTool::new(catalog.clone())));
         self.tools
@@ -138,6 +149,10 @@ impl AgentBuilder {
             history: vec![],
         }
     }
+}
+
+fn is_reserved_skill_tool(name: &str) -> bool {
+    matches!(name, "load_skill" | "read_skill_resource")
 }
 
 impl Agent {
