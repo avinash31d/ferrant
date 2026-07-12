@@ -94,8 +94,10 @@ impl GitFixture {
         let bare = temp.path().join("origin.git");
         fs::create_dir_all(&work).unwrap();
         git(&work, &["init", "-b", "main"]);
+        git(&work, &["config", "core.autocrlf", "false"]);
         git(&work, &["config", "user.email", "tests@example.invalid"]);
         git(&work, &["config", "user.name", "Ferrant Tests"]);
+        fs::write(work.join(".gitattributes"), "* text eol=lf\n").unwrap();
         write_skill(
             &work,
             "skills/main",
