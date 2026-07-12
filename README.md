@@ -132,13 +132,12 @@ ferrant run
 ```
 
 `init` creates `agent.py` and `deploy.yml`; `run` serves `GET /health` and
-`POST /infer` locally. To deploy using a reusable local Docker runner, build
-the runner image once, then deploy. Each deployment creates a new container,
-copies in the app code, and receives a dynamically allocated host port.
+`POST /infer` locally for development. Deployment is remote: the CLI packages
+the application and uploads it to a Ferrant deployment server, which starts
+the container using its own Docker daemon.
 
 ```bash
-docker build -t ferrant-runner:latest -f server/docker/Dockerfile server
-ferrant deploy
+ferrant deploy --server https://deploy.example.com
 ```
 
 See [deployment documentation](docs/deployment.md) for the handler contract.

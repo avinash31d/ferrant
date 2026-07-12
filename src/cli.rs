@@ -1,18 +1,16 @@
-//! Command-line support for creating, running, and locally deploying Python agents.
+//! Command-line support for creating, running, and deploying Python agents.
 
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
+use flate2::write::GzEncoder;
+use flate2::Compression;
 use serde::Deserialize;
 use std::fs;
-use std::io::{Read, Write};
-use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::thread;
-use std::time::Duration;
+use tar::Builder;
 
 const RUNTIME: &str = include_str!("../server/runtime/ferrant_server.py");
-const DEFAULT_IMAGE: &str = "ferrant-runner:latest";
 
 #[derive(Parser)]
 #[command(
@@ -39,12 +37,13 @@ enum Commands {
         #[arg(long)]
         port: Option<u16>,
     },
-    /// Start a new container from the reusable runner image and deploy the app.
+    /// Package the app and send it to a Ferrant deployment server.
     Deploy {
         #[arg(short, long, default_value = "deploy.yml")]
         config: PathBuf,
-        #[arg(long, default_value = DEFAULT_IMAGE)]
-        image: String,
+        /// Deployment server URL (or set FERRANT_DEPLOY_SERVER).
+        #[arg(long, env = "FERRANT_DEPLOY_SERVER")]
+        server: String,
     },
 }
 
@@ -75,7 +74,7 @@ pub fn execute(args: &[String]) -> Result<()> {
     match cli.command {
         Commands::Init { directory } => init(&directory),
         Commands::Run { config, port } => run(&config, port),
-        Commands::Deploy { config, image } => deploy(&config, &image),
+        Commands::Deploy { config, server } => deploy(&config, &server),
     }
 }
 
@@ -127,71 +126,50 @@ fn run(config_path: &Path, override_port: Option<u16>) -> Result<()> {
     Ok(())
 }
 
-fn deploy(config_path: &Path, image: &str) -> Result<()> {
+#[derive(Deserialize)]
+struct DeploymentResponse {
+    id: String,
+    endpoint: String,
+}
+
+fn deploy(config_path: &Path, server: &str) -> Result<()> {
     let (config, app_dir) = load_config(config_path)?;
-    docker(["info"])?;
-    docker(["image", "inspect", image]).with_context(|| {
-        format!("runner image {image:?} is unavailable; build it with `docker build -t {DEFAULT_IMAGE} -f server/docker/Dockerfile server`")
-    })?;
-    let container = format!(
-        "ferrant-{}-{}",
-        slug(&config.name),
-        &uuid::Uuid::new_v4().simple().to_string()[..8]
-    );
-    let id = docker_output([
-        "run",
-        "-d",
-        "--rm",
-        "--name",
-        &container,
-        "--label",
-        "ferrant.managed=true",
-        "--label",
-        &format!("ferrant.app={}", config.name),
-        "-p",
-        "127.0.0.1::8000",
-        image,
-    ])?;
-    let deploy_result = (|| -> Result<String> {
-        docker([
-            "cp",
-            &format!("{}/.", app_dir.display()),
-            &format!("{container}:/app"),
-        ])?;
-        docker([
-            "exec",
-            "-d",
-            "-w",
-            "/app",
-            &container,
-            "python",
-            "/opt/ferrant/ferrant_server.py",
-            "--app-dir",
-            "/app",
-            "--handler",
-            &config.handler,
-            "--port",
-            "8000",
-        ])?;
-        let port = docker_output(["port", &container, "8000/tcp"])?;
-        let endpoint = format!(
-            "http://127.0.0.1:{}",
-            port.trim()
-                .rsplit(':')
-                .next()
-                .ok_or_else(|| anyhow!("could not determine Docker port"))?
-        );
-        wait_for_health(&endpoint)?;
-        Ok(endpoint)
-    })();
-    if deploy_result.is_err() {
-        let _ = docker(["rm", "-f", &container]);
+    let archive = package_application(&app_dir)?;
+    let url = format!("{}/deployments", server.trim_end_matches('/'));
+    let (status, body) = tokio::runtime::Runtime::new()?
+        .block_on(async {
+            let response = reqwest::Client::new()
+                .post(url)
+                .header("content-type", "application/gzip")
+                .header("x-ferrant-name", &config.name)
+                .header("x-ferrant-handler", &config.handler)
+                .body(archive)
+                .send()
+                .await?;
+            let status = response.status();
+            let body = response.text().await?;
+            Ok::<_, reqwest::Error>((status, body))
+        })
+        .context("failed to contact deployment server")?;
+    if !status.is_success() {
+        bail!("deployment server returned {status}: {body}");
     }
-    let endpoint = deploy_result?;
-    println!("Deployed {} ({})", config.name, id.trim());
-    println!("Inference endpoint: {endpoint}/infer");
-    println!("Container: {container}");
+    let deployment: DeploymentResponse =
+        serde_json::from_str(&body).context("deployment server returned an invalid response")?;
+    println!("Deployed {} ({})", config.name, deployment.id);
+    println!("Inference endpoint: {}/infer", deployment.endpoint);
     Ok(())
+}
+
+fn package_application(app_dir: &Path) -> Result<Vec<u8>> {
+    let mut archive = Builder::new(GzEncoder::new(Vec::new(), Compression::default()));
+    archive
+        .append_dir_all(".", app_dir)
+        .context("failed to package application directory")?;
+    let encoder = archive.into_inner()?;
+    encoder
+        .finish()
+        .context("failed to compress application package")
 }
 
 fn load_config(path: &Path) -> Result<(DeployConfig, PathBuf)> {
@@ -234,79 +212,16 @@ fn path_string(path: &Path) -> Result<String> {
         .ok_or_else(|| anyhow!("path must be valid UTF-8"))
 }
 
-fn docker<const N: usize>(args: [&str; N]) -> Result<()> {
-    let output = Command::new("docker")
-        .args(args)
-        .output()
-        .context("Docker is not installed or not on PATH")?;
-    if output.status.success() {
-        return Ok(());
-    }
-    bail!(
-        "docker command failed: {}",
-        String::from_utf8_lossy(&output.stderr).trim()
-    )
-}
-
-fn docker_output<const N: usize>(args: [&str; N]) -> Result<String> {
-    let output = Command::new("docker")
-        .args(args)
-        .output()
-        .context("Docker is not installed or not on PATH")?;
-    if output.status.success() {
-        return Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned());
-    }
-    bail!(
-        "docker command failed: {}",
-        String::from_utf8_lossy(&output.stderr).trim()
-    )
-}
-
-fn wait_for_health(endpoint: &str) -> Result<()> {
-    let address = endpoint.trim_start_matches("http://");
-    for _ in 0..30 {
-        if let Ok(mut stream) = TcpStream::connect(address) {
-            stream.set_read_timeout(Some(Duration::from_millis(500)))?;
-            stream.write_all(
-                b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
-            )?;
-            let mut response = String::new();
-            stream.read_to_string(&mut response)?;
-            if response.starts_with("HTTP/1.0 200") || response.starts_with("HTTP/1.1 200") {
-                return Ok(());
-            }
-        }
-        thread::sleep(Duration::from_millis(500));
-    }
-    bail!("deployment did not become healthy; inspect the container logs with `docker logs`");
-}
-
-fn slug(value: &str) -> String {
-    let value: String = value
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() {
-                character.to_ascii_lowercase()
-            } else {
-                '-'
-            }
-        })
-        .collect();
-    value
-        .trim_matches('-')
-        .chars()
-        .take(40)
-        .collect::<String>()
-        .max("app".to_owned())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn slug_is_safe_for_docker_names() {
-        assert_eq!(slug("My agent!"), "my-agent");
-        assert_eq!(slug("---"), "app");
+    fn packages_application() {
+        let directory = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join("agent.py"), "pass").unwrap();
+        assert!(!package_application(&directory).unwrap().is_empty());
+        fs::remove_dir_all(directory).unwrap();
     }
 }
