@@ -1,6 +1,7 @@
 use ferrant::{SkillCatalog, SkillError, SkillLimits, SkillSource};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
@@ -30,6 +31,170 @@ fn write_skill(root: &Path, relative: &str, contents: &str) {
     let directory = root.join(relative);
     fs::create_dir_all(&directory).unwrap();
     fs::write(directory.join("SKILL.md"), contents).unwrap();
+}
+
+fn git(cwd: &Path, args: &[&str]) {
+    let output = Command::new("git")
+        .current_dir(cwd)
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+struct GitFixture {
+    _temp: TempDir,
+    work: PathBuf,
+    url: String,
+    cache: PathBuf,
+}
+
+impl GitFixture {
+    fn new() -> Self {
+        let temp = TempDir::new();
+        let work = temp.path().join("work");
+        let bare = temp.path().join("origin.git");
+        fs::create_dir_all(&work).unwrap();
+        git(&work, &["init", "-b", "main"]);
+        git(&work, &["config", "user.email", "tests@example.invalid"]);
+        git(&work, &["config", "user.name", "Ferrant Tests"]);
+        write_skill(
+            &work,
+            "skills/main",
+            "---\nname: main-skill\ndescription: Main\n---\nv1\n",
+        );
+        git(&work, &["add", "."]);
+        git(&work, &["commit", "-m", "main skill"]);
+        git(&work, &["checkout", "-b", "alternate"]);
+        write_skill(
+            &work,
+            "skills/alternate",
+            "---\nname: alternate-skill\ndescription: Alternate\n---\nbranch\n",
+        );
+        git(&work, &["add", "."]);
+        git(&work, &["commit", "-m", "alternate skill"]);
+        git(&work, &["checkout", "main"]);
+        let bare_text = bare.to_string_lossy().into_owned();
+        git(
+            temp.path(),
+            &[
+                "clone",
+                "--bare",
+                work.to_string_lossy().as_ref(),
+                &bare_text,
+            ],
+        );
+        git(&work, &["remote", "add", "origin", &bare_text]);
+        let url = format!(
+            "file:///{}",
+            bare.to_string_lossy()
+                .replace('\\', "/")
+                .trim_start_matches('/')
+        );
+        let cache = temp.path().join("cache");
+        Self {
+            _temp: temp,
+            work,
+            url,
+            cache,
+        }
+    }
+
+    fn source(&self, git_ref: Option<&str>, subdirectory: Option<&str>) -> SkillSource {
+        SkillSource::GitHub {
+            repository: self.url.clone(),
+            git_ref: git_ref.map(str::to_owned),
+            subdirectory: subdirectory.map(PathBuf::from),
+            cache_dir: self.cache.clone(),
+        }
+    }
+
+    fn update_main(&self) {
+        fs::write(
+            self.work.join("skills/main/SKILL.md"),
+            "---\nname: main-skill\ndescription: Main\n---\nv2\n",
+        )
+        .unwrap();
+        git(&self.work, &["add", "."]);
+        git(&self.work, &["commit", "-m", "update"]);
+        git(&self.work, &["push", "origin", "main"]);
+    }
+}
+
+#[test]
+fn github_clones_selects_ref_and_scopes_subdirectory() {
+    let fixture = GitFixture::new();
+    let main = SkillCatalog::load(
+        vec![fixture.source(Some("main"), Some("skills/main"))],
+        SkillLimits::default(),
+    )
+    .unwrap();
+    assert_eq!(main.skill("main-skill").unwrap().instructions, "v1\n");
+    assert!(main.skill("alternate-skill").is_none());
+    let alternate = SkillCatalog::load(
+        vec![fixture.source(Some("alternate"), Some("skills/alternate"))],
+        SkillLimits::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        alternate.skill("alternate-skill").unwrap().instructions,
+        "branch\n"
+    );
+}
+
+#[test]
+fn github_load_reuses_cache_and_refresh_updates_it() {
+    let fixture = GitFixture::new();
+    let source = fixture.source(Some("main"), Some("skills/main"));
+    assert_eq!(
+        SkillCatalog::load(vec![source.clone()], SkillLimits::default())
+            .unwrap()
+            .skill("main-skill")
+            .unwrap()
+            .instructions,
+        "v1\n"
+    );
+    fixture.update_main();
+    assert_eq!(
+        SkillCatalog::load(vec![source.clone()], SkillLimits::default())
+            .unwrap()
+            .skill("main-skill")
+            .unwrap()
+            .instructions,
+        "v1\n"
+    );
+    assert_eq!(
+        SkillCatalog::refresh(vec![source], SkillLimits::default())
+            .unwrap()
+            .skill("main-skill")
+            .unwrap()
+            .instructions,
+        "v2\n"
+    );
+}
+
+#[test]
+fn github_rejects_invalid_ref() {
+    let fixture = GitFixture::new();
+    assert!(SkillCatalog::load(
+        vec![fixture.source(Some("missing"), None)],
+        SkillLimits::default()
+    )
+    .is_err());
+}
+
+#[test]
+fn github_rejects_missing_subdirectory() {
+    let fixture = GitFixture::new();
+    assert!(SkillCatalog::load(
+        vec![fixture.source(Some("main"), Some("absent"))],
+        SkillLimits::default()
+    )
+    .is_err());
 }
 
 fn load(root: &Path, max_instruction_bytes: usize) -> Result<SkillCatalog, SkillError> {

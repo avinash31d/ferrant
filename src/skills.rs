@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
+use std::process::Command;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SkillMetadata {
@@ -21,7 +22,15 @@ pub struct Skill {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SkillSource {
-    Local { root: PathBuf },
+    Local {
+        root: PathBuf,
+    },
+    GitHub {
+        repository: String,
+        git_ref: Option<String>,
+        subdirectory: Option<PathBuf>,
+        cache_dir: PathBuf,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -73,6 +82,12 @@ pub enum SkillError {
         #[source]
         source: std::string::FromUtf8Error,
     },
+    #[error("invalid Git repository URL: {repository}")]
+    InvalidRepository { repository: String },
+    #[error("git command failed: {command}: {message}")]
+    Git { command: String, message: String },
+    #[error("Git subdirectory {path} resolves outside checkout {root}")]
+    GitSubdirectoryOutside { path: PathBuf, root: PathBuf },
 }
 
 #[derive(Clone, Debug, Default)]
@@ -83,10 +98,26 @@ pub struct SkillCatalog {
 
 impl SkillCatalog {
     pub fn load(sources: Vec<SkillSource>, limits: SkillLimits) -> Result<Self, SkillError> {
+        Self::materialize(sources, limits, false)
+    }
+
+    pub fn refresh(sources: Vec<SkillSource>, limits: SkillLimits) -> Result<Self, SkillError> {
+        Self::materialize(sources, limits, true)
+    }
+
+    fn materialize(
+        sources: Vec<SkillSource>,
+        limits: SkillLimits,
+        refresh: bool,
+    ) -> Result<Self, SkillError> {
         let mut files = Vec::new();
         for source in &sources {
             match source {
                 SkillSource::Local { root } => discover(root, source, &mut files)?,
+                SkillSource::GitHub { .. } => {
+                    let root = materialize_git(source, refresh)?;
+                    discover(&root, source, &mut files)?;
+                }
             }
         }
         files.sort_by(|a, b| a.0.cmp(&b.0));
@@ -176,6 +207,121 @@ impl SkillCatalog {
             source,
         })
     }
+}
+
+struct GitRepository;
+
+impl GitRepository {
+    fn run(cwd: Option<&Path>, args: &[&str]) -> Result<(), SkillError> {
+        let mut command = Command::new("git");
+        command.args(args);
+        if let Some(cwd) = cwd {
+            command.current_dir(cwd);
+        }
+        let output = command.output().map_err(|source| SkillError::Io {
+            path: cwd.unwrap_or_else(|| Path::new("git")).to_path_buf(),
+            source,
+        })?;
+        if output.status.success() {
+            return Ok(());
+        }
+        Err(SkillError::Git {
+            command: format!("git {}", args.join(" ")),
+            message: String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+        })
+    }
+}
+
+fn materialize_git(source: &SkillSource, refresh: bool) -> Result<PathBuf, SkillError> {
+    let SkillSource::GitHub {
+        repository,
+        git_ref,
+        subdirectory,
+        cache_dir,
+    } = source
+    else {
+        unreachable!()
+    };
+    if !(repository.starts_with("https://github.com/")
+        || repository.starts_with("ssh://git@github.com/")
+        || repository.starts_with("git@github.com:")
+        || repository.starts_with("file://"))
+    {
+        return Err(SkillError::InvalidRepository {
+            repository: repository.clone(),
+        });
+    }
+    fs::create_dir_all(cache_dir).map_err(|source| SkillError::Io {
+        path: cache_dir.clone(),
+        source,
+    })?;
+    let identity = format!(
+        "{repository}\0{}\0{}",
+        git_ref.as_deref().unwrap_or(""),
+        subdirectory
+            .as_deref()
+            .unwrap_or_default()
+            .to_string_lossy()
+    );
+    let checkout = cache_dir.join(format!("{:016x}", fnv1a(identity.as_bytes())));
+    if !checkout.exists() {
+        let target = checkout.to_string_lossy().into_owned();
+        GitRepository::run(None, &["clone", "--no-checkout", repository, &target])?;
+        checkout_target(&checkout, git_ref.as_deref())?;
+    } else if refresh {
+        GitRepository::run(Some(&checkout), &["fetch", "--prune", "origin"])?;
+        checkout_target(&checkout, git_ref.as_deref())?;
+    }
+    let checkout_root = checkout.canonicalize().map_err(|source| SkillError::Io {
+        path: checkout.clone(),
+        source,
+    })?;
+    let selected = match subdirectory {
+        Some(relative)
+            if relative.is_absolute()
+                || relative
+                    .components()
+                    .any(|c| !matches!(c, Component::Normal(_))) =>
+        {
+            return Err(SkillError::GitSubdirectoryOutside {
+                path: relative.clone(),
+                root: checkout_root,
+            });
+        }
+        Some(relative) => checkout_root.join(relative),
+        None => checkout_root.clone(),
+    };
+    let selected = selected.canonicalize().map_err(|source| SkillError::Io {
+        path: selected.clone(),
+        source,
+    })?;
+    if !selected.starts_with(&checkout_root) {
+        return Err(SkillError::GitSubdirectoryOutside {
+            path: selected,
+            root: checkout_root,
+        });
+    }
+    Ok(selected)
+}
+
+fn checkout_target(checkout: &Path, git_ref: Option<&str>) -> Result<(), SkillError> {
+    let target = git_ref
+        .map(|value| format!("origin/{value}"))
+        .unwrap_or_else(|| "origin/HEAD".to_owned());
+    GitRepository::run(
+        Some(checkout),
+        &["checkout", "--detach", "--force", &target],
+    )?;
+    GitRepository::run(Some(checkout), &["reset", "--hard", &target])
+}
+
+fn fnv1a(bytes: &[u8]) -> u64 {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
 }
 
 fn discover(
