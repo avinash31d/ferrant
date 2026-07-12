@@ -51,8 +51,7 @@ async fn agent_records_normalized_usage_and_operational_metrics() {
 
 #[tokio::test]
 async fn file_session_storage_survives_reopen_and_rejects_unsafe_ids() {
-    let directory =
-        std::env::temp_dir().join(format!("ferrant-sessions-{}", uuid::Uuid::new_v4()));
+    let directory = std::env::temp_dir().join(format!("ferrant-sessions-{}", uuid::Uuid::new_v4()));
     let storage = FileStorage::new(&directory);
     storage
         .save("session_1", &[Message::user("durable")])
