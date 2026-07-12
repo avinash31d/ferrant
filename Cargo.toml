@@ -36,6 +36,7 @@ clap = { version = "4", features = ["derive", "env"] }
 serde_yaml = "0.9"
 tar = "0.4"
 flate2 = "1"
+sha2 = "0.10"
 
 [[example]]
 name = "basic_agent"
@@ -68,3 +69,7 @@ path = "examples/multimodal_input.rs"
 [[example]]
 name = "multimodal_output"
 path = "examples/multimodal_output.rs"
+
+[[example]]
+name = "skills_agent"
+path = "examples/skills_agent.rs"

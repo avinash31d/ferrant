@@ -338,6 +338,18 @@ impl FileGraphStore {
     }
 }
 
+async fn sync_graph_directory(path: &Path) -> io::Result<()> {
+    match tokio::fs::File::open(path).await {
+        Ok(directory) => match directory.sync_all().await {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::PermissionDenied => Ok(()),
+            Err(error) => Err(error),
+        },
+        Err(error) if error.kind() == io::ErrorKind::PermissionDenied => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
 #[async_trait]
 impl GraphCheckpointStore for FileGraphStore {
     async fn load(&self, execution_id: &str) -> GraphStoreResult<Option<GraphCheckpoint>> {
@@ -375,8 +387,7 @@ impl GraphCheckpointStore for FileGraphStore {
             drop(file);
             tokio::fs::rename(&temporary, &target).await?;
             // Persist the directory entry where supported.
-            let directory = tokio::fs::File::open(&self.directory).await?;
-            directory.sync_all().await?;
+            sync_graph_directory(&self.directory).await?;
             Ok::<(), io::Error>(())
         }
         .await;
