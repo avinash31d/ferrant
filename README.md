@@ -134,21 +134,47 @@ ferrant run
 `init` creates `agent.py` and `deploy.yml`; `run` serves `GET /health` and
 `POST /infer` locally for development. Deployment is remote: the CLI packages
 the application and uploads it to the deployment server configured in
-`deploy.yml`, which starts the container using its own Docker daemon.
+`deploy.yml`, which starts the container using its own Docker daemon. Sign in
+first; the saved access token lasts 12 hours.
 
 ```bash
+ferrant login --email you@example.com --token fdt_...
 ferrant deploy
 ferrant status <deployment-id>
 ferrant logs <deployment-id>
 ferrant restart <deployment-id>
 ferrant stop <deployment-id>
+ferrant logout
 ```
 
-Set the server once in the manifest:
+Set the server in the generated manifest:
 
 ```yaml
 server: https://deploy.example.com
+environment: <environment-id>
+cpu: 0.5
+memory_mb: 512
+replicas: 1
+auth: private
 ```
+
+If `environment` is still `replace-with-environment-id`, the first
+authenticated deploy creates or reuses the `echo-agent` project in the console,
+selects its development environment, and writes the generated environment ID
+back to `deploy.yml` before uploading the release. Use an organization-wide
+console token so it includes `project:create`.
+
+For CI, use a scoped deploy token without saving it locally:
+
+```bash
+FERRANT_TOKEN=fdt_... ferrant deploy
+```
+
+Create the `fdt_` token in the web console. `ferrant login` exchanges it for a
+scoped 12-hour CLI session; the CLI never accepts an account password.
+`--server` and `--token` are global overrides. Use
+`ferrant deploy --deployment <id>` to create a new immutable release for an
+existing deployment, and `--git-sha <sha>` to attach source revision metadata.
 
 See [deployment documentation](docs/deployment.md) for the handler contract.
 

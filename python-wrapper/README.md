@@ -31,9 +31,16 @@ prebuilt wheel.
 `pip install ferrant` also installs the `ferrant` command and its local
 FastAPI/Uvicorn runtime dependencies. Run `ferrant init` to create a
 function-based Python agent and `ferrant run` to host it locally. Configure
-`server: https://deploy.example.com` in `deploy.yml`, then run `ferrant deploy` to deploy through a
-Ferrant deployment server. See the repository's deployment documentation for
-the handler contract.
+`server: https://deploy.example.com` and `environment: <environment-id>` in
+`deploy.yml`, create a token in the web console, run
+`ferrant login --email you@example.com --token fdt_...`, then run `ferrant
+deploy` to deploy through a Ferrant deployment server. The CLI does not accept
+account passwords. For CI, set a scoped deploy token in `FERRANT_TOKEN`. See
+the repository's deployment documentation for the handler contract.
+
+The first authenticated deploy automatically creates or reuses the manifest's
+named project when `environment` still contains the generated placeholder. It
+selects the development environment and saves its ID back to `deploy.yml`.
 
 The wheel uses PyO3's stable ABI for Python 3.9+. Rust futures are exposed as
 normal `asyncio` awaitables. Python custom-tool and graph-node callbacks are
