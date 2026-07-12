@@ -1,3 +1,6 @@
+use crate::tool::Tool;
+use async_trait::async_trait;
+use serde_json::{json, Value as JsonValue};
 use serde_yaml::Value;
 use std::collections::BTreeMap;
 use std::fs::{self, File};
@@ -5,6 +8,7 @@ use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -146,6 +150,20 @@ impl SkillCatalog {
         self.skills.get(name)
     }
 
+    /// A compact, deterministic catalog suitable for an agent system prompt.
+    pub fn prompt_summary(&self) -> String {
+        let mut summary = String::from("<skills>\n");
+        for skill in self.skills.values() {
+            summary.push_str("  <skill>\n    <name>");
+            summary.push_str(&escape_xml(&skill.metadata.name));
+            summary.push_str("</name>\n    <description>");
+            summary.push_str(&escape_xml(&skill.metadata.description));
+            summary.push_str("</description>\n  </skill>\n");
+        }
+        summary.push_str("</skills>");
+        summary
+    }
+
     pub fn read_resource(&self, skill: &str, relative: &Path) -> Result<String, SkillError> {
         let skill = self
             .skills
@@ -211,6 +229,88 @@ impl SkillCatalog {
             path: target,
             source,
         })
+    }
+}
+
+fn escape_xml(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+pub struct LoadSkillTool {
+    catalog: Arc<SkillCatalog>,
+}
+
+impl LoadSkillTool {
+    pub fn new(catalog: Arc<SkillCatalog>) -> Self {
+        Self { catalog }
+    }
+}
+
+#[async_trait]
+impl Tool for LoadSkillTool {
+    fn name(&self) -> &str {
+        "load_skill"
+    }
+    fn description(&self) -> &str {
+        "Load the full instructions for a skill by name"
+    }
+    fn parameters(&self) -> JsonValue {
+        json!({"type":"object","properties":{"name":{"type":"string"}},"required":["name"]})
+    }
+    async fn execute(&self, args: JsonValue) -> anyhow::Result<String> {
+        let name = args
+            .get("name")
+            .and_then(JsonValue::as_str)
+            .ok_or_else(|| anyhow::anyhow!("name must be a string"))?;
+        self.catalog
+            .skill(name)
+            .map(|skill| skill.instructions.clone())
+            .ok_or_else(|| {
+                anyhow::anyhow!(SkillError::UnknownSkill {
+                    name: name.to_owned()
+                })
+            })
+    }
+}
+
+pub struct ReadSkillResourceTool {
+    catalog: Arc<SkillCatalog>,
+}
+
+impl ReadSkillResourceTool {
+    pub fn new(catalog: Arc<SkillCatalog>) -> Self {
+        Self { catalog }
+    }
+}
+
+#[async_trait]
+impl Tool for ReadSkillResourceTool {
+    fn name(&self) -> &str {
+        "read_skill_resource"
+    }
+    fn description(&self) -> &str {
+        "Read a UTF-8 resource file belonging to a skill"
+    }
+    fn parameters(&self) -> JsonValue {
+        json!({"type":"object","properties":{"skill":{"type":"string"},"path":{"type":"string"}},"required":["skill","path"]})
+    }
+    async fn execute(&self, args: JsonValue) -> anyhow::Result<String> {
+        let skill = args
+            .get("skill")
+            .and_then(JsonValue::as_str)
+            .ok_or_else(|| anyhow::anyhow!("skill must be a string"))?;
+        let path = args
+            .get("path")
+            .and_then(JsonValue::as_str)
+            .ok_or_else(|| anyhow::anyhow!("path must be a string"))?;
+        self.catalog
+            .read_resource(skill, Path::new(path))
+            .map_err(anyhow::Error::new)
     }
 }
 

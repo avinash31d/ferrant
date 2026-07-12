@@ -1,8 +1,16 @@
-use ferrant::{SkillCatalog, SkillError, SkillLimits, SkillSource};
+use async_trait::async_trait;
+use ferrant::llm::{Model, ModelResponse};
+use ferrant::message::ToolCall;
+use ferrant::{
+    Agent, LoadSkillTool, Message, ReadSkillResourceTool, Role, SkillCatalog, SkillError,
+    SkillLimits, SkillSource, Tool, ToolSpec,
+};
+use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
@@ -492,4 +500,130 @@ fn local_enforces_instruction_byte_limit() {
         load(temp.path(), 20),
         Err(SkillError::InstructionTooLarge { limit: 20, .. })
     ));
+}
+
+#[derive(Default)]
+struct SkillModelState {
+    calls: usize,
+    messages: Vec<Vec<Message>>,
+    tools: Vec<Vec<ToolSpec>>,
+}
+
+struct SkillModel(Arc<Mutex<SkillModelState>>);
+
+#[async_trait]
+impl Model for SkillModel {
+    fn id(&self) -> &str {
+        "skill-model"
+    }
+
+    async fn generate(
+        &self,
+        messages: &[Message],
+        tools: &[ToolSpec],
+    ) -> ferrant::Result<ModelResponse> {
+        let mut state = self.0.lock().unwrap();
+        state.messages.push(messages.to_vec());
+        state.tools.push(tools.to_vec());
+        state.calls += 1;
+        if state.calls == 1 {
+            Ok(ModelResponse {
+                tool_calls: vec![ToolCall {
+                    id: "load-1".into(),
+                    name: "load_skill".into(),
+                    arguments: json!({"name": "alpha"}),
+                }],
+                ..Default::default()
+            })
+        } else {
+            Ok(ModelResponse {
+                content: Some("done".into()),
+                ..Default::default()
+            })
+        }
+    }
+}
+
+#[tokio::test]
+async fn agent_skills_progressively_disclose_instructions_and_register_tools() {
+    let temp = TempDir::new();
+    write_skill(
+        temp.path(),
+        "z",
+        "---\nname: zeta\ndescription: Last skill\n---\nSECRET ZETA\n",
+    );
+    write_skill(
+        temp.path(),
+        "a",
+        "---\nname: alpha\ndescription: First skill\n---\nFULL ALPHA INSTRUCTIONS\n",
+    );
+    let catalog = load(temp.path(), 1024).unwrap();
+    let state = Arc::new(Mutex::new(SkillModelState::default()));
+    let mut agent = Agent::builder(SkillModel(state.clone()))
+        .instructions("Existing instructions")
+        .skills(catalog)
+        .build();
+
+    assert_eq!(agent.run("help").await.unwrap(), "done");
+    let state = state.lock().unwrap();
+    let first_system = state.messages[0]
+        .iter()
+        .find(|message| message.role == Role::System)
+        .unwrap()
+        .content
+        .as_deref()
+        .unwrap();
+    assert!(first_system.starts_with("Existing instructions\n\n"));
+    assert!(first_system.contains("alpha"));
+    assert!(first_system.contains("First skill"));
+    assert!(first_system.find("alpha").unwrap() < first_system.find("zeta").unwrap());
+    assert!(!first_system.contains("FULL ALPHA INSTRUCTIONS"));
+    assert!(!first_system.contains("SECRET ZETA"));
+    assert_eq!(
+        state.tools[0]
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["load_skill", "read_skill_resource"]
+    );
+    assert_eq!(state.tools[0][0].parameters["required"], json!(["name"]));
+    assert_eq!(
+        state.tools[0][1].parameters["required"],
+        json!(["skill", "path"])
+    );
+    let result = state.messages[1]
+        .iter()
+        .find(|message| message.role == Role::Tool)
+        .unwrap();
+    assert_eq!(result.content.as_deref(), Some("FULL ALPHA INSTRUCTIONS\n"));
+}
+
+#[tokio::test]
+async fn skill_tools_execute_catalog_reads() {
+    let temp = TempDir::new();
+    write_skill(
+        temp.path(),
+        "package",
+        "---\nname: reader\ndescription: Reader\n---\nUse resources.\n",
+    );
+    fs::write(
+        temp.path().join("package/guide.txt"),
+        "ordinary tool output",
+    )
+    .unwrap();
+    let catalog = Arc::new(load(temp.path(), 1024).unwrap());
+    assert_eq!(
+        LoadSkillTool::new(catalog.clone())
+            .execute(json!({"name": "reader"}))
+            .await
+            .unwrap(),
+        "Use resources.\n"
+    );
+    assert_eq!(
+        ReadSkillResourceTool::new(catalog)
+            .execute(json!({"skill": "reader", "path": "guide.txt"}))
+            .await
+            .unwrap(),
+        "ordinary tool output"
+    );
 }

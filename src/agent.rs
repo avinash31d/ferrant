@@ -6,6 +6,7 @@ use crate::observability::{
     MetricRecord, MetricsRecorder, OperationKind, OperationOutcome, UsageRecord, UsageRecorder,
 };
 use crate::runtime::{ExecutionPolicy, StreamEvent};
+use crate::skills::{LoadSkillTool, ReadSkillResourceTool, SkillCatalog};
 use crate::structured::parse_structured;
 use crate::tool::{Tool, ToolSpec};
 use crate::tracing::{NoopTracer, TraceEvent, Tracer};
@@ -72,6 +73,20 @@ impl AgentBuilder {
 
     pub fn tools(mut self, tools: Vec<Arc<dyn Tool>>) -> Self {
         self.tools.extend(tools);
+        self
+    }
+
+    pub fn skills(mut self, catalog: SkillCatalog) -> Self {
+        let summary = catalog.prompt_summary();
+        self.instructions = Some(match self.instructions.take() {
+            Some(instructions) => format!("{instructions}\n\n{summary}"),
+            None => summary,
+        });
+        let catalog = Arc::new(catalog);
+        self.tools
+            .push(Arc::new(LoadSkillTool::new(catalog.clone())));
+        self.tools
+            .push(Arc::new(ReadSkillResourceTool::new(catalog)));
         self
     }
 

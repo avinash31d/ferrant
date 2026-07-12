@@ -86,7 +86,10 @@ pub use rag::{
     VectorStore,
 };
 pub use runtime::{ExecutionPolicy, StreamEvent};
-pub use skills::{Skill, SkillCatalog, SkillError, SkillLimits, SkillMetadata, SkillSource};
+pub use skills::{
+    LoadSkillTool, ReadSkillResourceTool, Skill, SkillCatalog, SkillError, SkillLimits,
+    SkillMetadata, SkillSource,
+};
 pub use structured::{parse_structured, validate_json};
 pub use tool::{FunctionTool, Tool, ToolSpec};
 #[cfg(feature = "opentelemetry")]
