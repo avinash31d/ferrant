@@ -34,6 +34,7 @@ jsonschema = { version = "0.47", default-features = false }
 opentelemetry = { version = "0.32", optional = true }
 clap = { version = "4", features = ["derive"] }
 serde_yaml = "0.9"
+sha2 = "0.10"
 
 [[example]]
 name = "basic_agent"
@@ -66,3 +67,7 @@ path = "examples/multimodal_input.rs"
 [[example]]
 name = "multimodal_output"
 path = "examples/multimodal_output.rs"
+
+[[example]]
+name = "skills_agent"
+path = "examples/skills_agent.rs"

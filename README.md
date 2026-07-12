@@ -162,6 +162,81 @@ async fn main() -> anyhow::Result<()> {
 }
 ```
 
+### Skills
+
+Skills are portable instruction packages that an agent can discover and load
+only when a request needs them. Each package is a directory containing a
+`SKILL.md` file with YAML frontmatter followed by Markdown instructions:
+
+```markdown
+---
+name: release-notes
+description: Draft release notes from a set of merged changes.
+---
+
+# Release notes
+
+Follow the repository's release-note conventions. Read `references/style.md`
+when exact formatting guidance is needed.
+```
+
+The frontmatter requires string `name` and `description` fields. Additional
+frontmatter fields are preserved as extensions. A package may keep supporting
+UTF-8 files beside `SKILL.md`, for example under `references/`, `templates/`,
+or `scripts/`.
+
+Load local packages by adding a root directory. Discovery is recursive, so a
+single source can contain nested skill directories:
+
+```rust
+use ferrant::{Agent, SkillCatalog, SkillLimits, SkillSource};
+use std::path::PathBuf;
+
+let catalog = SkillCatalog::load(
+    vec![SkillSource::Local {
+        root: PathBuf::from("./skills"),
+    }],
+    SkillLimits::default(),
+)?;
+
+let agent = Agent::builder(model).skills(catalog).build();
+```
+
+GitHub sources accept HTTPS or SSH repository URLs, an optional branch, tag,
+commit, or qualified Git ref, an optional repository subdirectory to search,
+and an explicit local cache directory:
+
+```rust
+let source = SkillSource::GitHub {
+    repository: "https://github.com/example/agent-skills.git".into(),
+    git_ref: Some("v1.2.0".into()),
+    subdirectory: Some("skills/rust".into()),
+    cache_dir: ".ferrant/skills-cache".into(),
+};
+let catalog = SkillCatalog::load(vec![source], SkillLimits::default())?;
+```
+
+`SkillCatalog::load` reuses a valid cached Git checkout. Call
+`SkillCatalog::refresh` with the same sources and limits to fetch a fresh
+checkout; if refresh fails, the previously valid cached checkout is preserved.
+
+Attaching a catalog implements progressive disclosure. The agent prompt sees
+only each skill's name and description. It can then call `load_skill` to read
+the selected `SKILL.md` instructions and `read_skill_resource` to read a
+specific bounded resource referenced by those instructions. Skill resources
+and scripts are **never executed** by Ferrant; the built-in tools only return
+UTF-8 text to the model.
+
+Loading fails explicitly for unreadable or malformed packages, duplicate skill
+names, oversized instructions, invalid GitHub repositories or refs, and missing
+or unsafe subdirectories. Resource reads reject unknown skills, absolute or
+traversal paths, symlink escapes, directories, non-UTF-8 data, and files over
+the configured limit. Override `SkillLimits` when the default 256 KiB
+instruction and 1 MiB resource limits do not suit your application.
+
+See `examples/skills_agent.rs` for a complete OpenAI agent that combines local
+skills with an optional repository from `FERRANT_SKILLS_REPOSITORY`.
+
 ### Giving the agent a tool
 
 ```rust
