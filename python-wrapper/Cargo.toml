@@ -1,6 +1,6 @@
 [package]
 name = "ferrant-python"
-version = "0.1.11"
+version = "0.1.13"
 edition = "2021"
 publish = false
 description = "Optional lightweight Python bindings for the Rust ferrant core"
