@@ -28,10 +28,12 @@ For local wrapper development, use `maturin develop --release` from this
 directory. End users do not need Maturin or a Rust toolchain when installing a
 prebuilt wheel.
 
-`pip install ferrant` also installs the `ferrant` command. Run `ferrant init`
-to create a function-based Python agent, `ferrant run` to host it locally, and
-`ferrant deploy` to start a new container from `ferrant-runner:latest`. See
-the repository's `docs/deployment.md` for the deployment contract.
+`pip install ferrant` also installs the `ferrant` command and its local
+FastAPI/Uvicorn runtime dependencies. Run `ferrant init` to create a
+function-based Python agent, `ferrant run` to host it locally, and
+`ferrant deploy --server https://deploy.example.com` to deploy through a
+Ferrant deployment server. See the repository's deployment documentation for
+the handler contract.
 
 The wheel uses PyO3's stable ABI for Python 3.9+. Rust futures are exposed as
 normal `asyncio` awaitables. Python custom-tool and graph-node callbacks are
