@@ -4,6 +4,11 @@ use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::thread;
+use std::time::Duration;
+
+static NEXT_GIT_TEMP: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SkillMetadata {
@@ -212,7 +217,7 @@ impl SkillCatalog {
 struct GitRepository;
 
 impl GitRepository {
-    fn run(cwd: Option<&Path>, args: &[&str]) -> Result<(), SkillError> {
+    fn output(cwd: Option<&Path>, args: &[&str]) -> Result<Vec<u8>, SkillError> {
         let mut command = Command::new("git");
         command.args(args);
         if let Some(cwd) = cwd {
@@ -223,12 +228,49 @@ impl GitRepository {
             source,
         })?;
         if output.status.success() {
-            return Ok(());
+            return Ok(output.stdout);
         }
         Err(SkillError::Git {
             command: format!("git {}", args.join(" ")),
             message: String::from_utf8_lossy(&output.stderr).trim().to_owned(),
         })
+    }
+
+    fn run(cwd: Option<&Path>, args: &[&str]) -> Result<(), SkillError> {
+        Self::output(cwd, args).map(|_| ())
+    }
+}
+
+struct CacheLock(PathBuf);
+
+impl CacheLock {
+    fn acquire(path: PathBuf) -> Result<Self, SkillError> {
+        for _ in 0..500 {
+            match File::options().write(true).create_new(true).open(&path) {
+                Ok(_) => return Ok(Self(path)),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    thread::sleep(Duration::from_millis(10));
+                }
+                Err(source) => return Err(SkillError::Io { path, source }),
+            }
+        }
+        Err(SkillError::Git {
+            command: "cache lock".into(),
+            message: format!("timed out waiting for {}", path.display()),
+        })
+    }
+}
+
+impl Drop for CacheLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
+struct TempCheckout(PathBuf);
+impl Drop for TempCheckout {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
     }
 }
 
@@ -255,23 +297,26 @@ fn materialize_git(source: &SkillSource, refresh: bool) -> Result<PathBuf, Skill
         path: cache_dir.clone(),
         source,
     })?;
-    let identity = format!(
-        "{repository}\0{}\0{}",
-        git_ref.as_deref().unwrap_or(""),
-        subdirectory
-            .as_deref()
-            .unwrap_or_default()
-            .to_string_lossy()
-    );
-    let checkout = cache_dir.join(format!("{:016x}", fnv1a(identity.as_bytes())));
-    if !checkout.exists() {
-        let target = checkout.to_string_lossy().into_owned();
-        GitRepository::run(None, &["clone", "--no-checkout", repository, &target])?;
-        checkout_target(&checkout, git_ref.as_deref())?;
-    } else if refresh {
-        GitRepository::run(Some(&checkout), &["fetch", "--prune", "origin"])?;
-        checkout_target(&checkout, git_ref.as_deref())?;
+    let key = source_cache_key(repository, git_ref.as_deref(), subdirectory.as_deref());
+    let checkout = cache_dir.join(format!("{key:016x}"));
+    if !checkout.exists() || refresh {
+        let _lock = CacheLock::acquire(cache_dir.join(format!("{key:016x}.lock")))?;
+        if !checkout.exists() || refresh {
+            let nonce = NEXT_GIT_TEMP.fetch_add(1, Ordering::Relaxed);
+            let staged_path =
+                cache_dir.join(format!(".{key:016x}.{}.{}.tmp", std::process::id(), nonce));
+            let staged = TempCheckout(staged_path);
+            let target = staged.0.to_string_lossy().into_owned();
+            GitRepository::run(None, &["clone", "--no-checkout", repository, &target])?;
+            checkout_target(&staged.0, git_ref.as_deref())?;
+            selected_root(&staged.0, subdirectory)?;
+            replace_checkout(&staged.0, &checkout)?;
+        }
     }
+    selected_root(&checkout, subdirectory)
+}
+
+fn selected_root(checkout: &Path, subdirectory: &Option<PathBuf>) -> Result<PathBuf, SkillError> {
     let checkout_root = checkout.canonicalize().map_err(|source| SkillError::Io {
         path: checkout.clone(),
         source,
@@ -304,15 +349,99 @@ fn materialize_git(source: &SkillSource, refresh: bool) -> Result<PathBuf, Skill
     Ok(selected)
 }
 
+fn replace_checkout(staged: &Path, checkout: &Path) -> Result<(), SkillError> {
+    if !checkout.exists() {
+        return fs::rename(staged, checkout).map_err(|source| SkillError::Io {
+            path: checkout.to_path_buf(),
+            source,
+        });
+    }
+    let backup = checkout.with_extension(format!("backup-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&backup);
+    fs::rename(checkout, &backup).map_err(|source| SkillError::Io {
+        path: checkout.to_path_buf(),
+        source,
+    })?;
+    match fs::rename(staged, checkout) {
+        Ok(()) => {
+            let _ = fs::remove_dir_all(backup);
+            Ok(())
+        }
+        Err(source) => {
+            let _ = fs::rename(&backup, checkout);
+            Err(SkillError::Io {
+                path: checkout.to_path_buf(),
+                source,
+            })
+        }
+    }
+}
+
 fn checkout_target(checkout: &Path, git_ref: Option<&str>) -> Result<(), SkillError> {
-    let target = git_ref
-        .map(|value| format!("origin/{value}"))
-        .unwrap_or_else(|| "origin/HEAD".to_owned());
+    let requested = git_ref.unwrap_or("refs/remotes/origin/HEAD");
+    let mut candidates = Vec::new();
+    if let Some(branch) = requested.strip_prefix("refs/heads/") {
+        candidates.push(format!("refs/remotes/origin/{branch}"));
+    } else if !requested.starts_with("refs/") {
+        candidates.push(format!("refs/remotes/origin/{requested}"));
+    }
+    candidates.push(requested.to_owned());
+    let mut target = None;
+    for candidate in candidates {
+        let expression = format!("{candidate}^{{commit}}");
+        if let Ok(bytes) = GitRepository::output(
+            Some(checkout),
+            &["rev-parse", "--verify", "--quiet", &expression],
+        ) {
+            target = Some(String::from_utf8_lossy(&bytes).trim().to_owned());
+            break;
+        }
+    }
+    let target = target.ok_or_else(|| SkillError::Git {
+        command: "git rev-parse".into(),
+        message: format!("unknown ref {requested}"),
+    })?;
     GitRepository::run(
         Some(checkout),
         &["checkout", "--detach", "--force", &target],
     )?;
     GitRepository::run(Some(checkout), &["reset", "--hard", &target])
+}
+
+fn source_cache_key(repository: &str, git_ref: Option<&str>, subdirectory: Option<&Path>) -> u64 {
+    let mut bytes = Vec::new();
+    append_field(&mut bytes, 1, repository.as_bytes());
+    append_field(&mut bytes, 2, git_ref.unwrap_or("").as_bytes());
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        append_field(
+            &mut bytes,
+            3,
+            subdirectory
+                .unwrap_or_else(|| Path::new(""))
+                .as_os_str()
+                .as_bytes(),
+        );
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        let native: Vec<u8> = subdirectory
+            .unwrap_or_else(|| Path::new(""))
+            .as_os_str()
+            .encode_wide()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        append_field(&mut bytes, 3, &native);
+    }
+    fnv1a(&bytes)
+}
+
+fn append_field(identity: &mut Vec<u8>, tag: u8, value: &[u8]) {
+    identity.push(tag);
+    identity.extend_from_slice(&(value.len() as u64).to_le_bytes());
+    identity.extend_from_slice(value);
 }
 
 fn fnv1a(bytes: &[u8]) -> u64 {

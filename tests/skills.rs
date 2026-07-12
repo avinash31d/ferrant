@@ -46,11 +46,26 @@ fn git(cwd: &Path, args: &[&str]) {
     );
 }
 
+fn git_stdout(cwd: &Path, args: &[&str]) -> String {
+    let output = Command::new("git")
+        .current_dir(cwd)
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).unwrap().trim().to_owned()
+}
+
 struct GitFixture {
     _temp: TempDir,
     work: PathBuf,
     url: String,
     cache: PathBuf,
+    bare: PathBuf,
 }
 
 impl GitFixture {
@@ -69,6 +84,7 @@ impl GitFixture {
         );
         git(&work, &["add", "."]);
         git(&work, &["commit", "-m", "main skill"]);
+        git(&work, &["tag", "v1"]);
         git(&work, &["checkout", "-b", "alternate"]);
         write_skill(
             &work,
@@ -101,6 +117,7 @@ impl GitFixture {
             work,
             url,
             cache,
+            bare,
         }
     }
 
@@ -123,6 +140,47 @@ impl GitFixture {
         git(&self.work, &["commit", "-m", "update"]);
         git(&self.work, &["push", "origin", "main"]);
     }
+}
+
+#[test]
+fn github_selects_tag_commit_sha_and_qualified_ref() {
+    let fixture = GitFixture::new();
+    let sha = git_stdout(&fixture.work, &["rev-parse", "main"]);
+    for git_ref in ["v1", sha.as_str(), "refs/heads/main", "refs/tags/v1"] {
+        let catalog = SkillCatalog::load(
+            vec![fixture.source(Some(git_ref), Some("skills/main"))],
+            SkillLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            catalog.skill("main-skill").unwrap().instructions,
+            "v1\n",
+            "ref {git_ref}"
+        );
+    }
+}
+
+#[test]
+fn github_failed_initial_materialization_leaves_no_cache_entry() {
+    let fixture = GitFixture::new();
+    assert!(SkillCatalog::load(
+        vec![fixture.source(Some("does-not-exist"), None)],
+        SkillLimits::default(),
+    )
+    .is_err());
+    assert!(fs::read_dir(&fixture.cache).unwrap().next().is_none());
+}
+
+#[test]
+fn github_failed_refresh_preserves_valid_cached_checkout() {
+    let fixture = GitFixture::new();
+    let source = fixture.source(Some("main"), Some("skills/main"));
+    SkillCatalog::load(vec![source.clone()], SkillLimits::default()).unwrap();
+    let unavailable = fixture.bare.with_extension("unavailable");
+    fs::rename(&fixture.bare, &unavailable).unwrap();
+    assert!(SkillCatalog::refresh(vec![source.clone()], SkillLimits::default()).is_err());
+    let cached = SkillCatalog::load(vec![source], SkillLimits::default()).unwrap();
+    assert_eq!(cached.skill("main-skill").unwrap().instructions, "v1\n");
 }
 
 #[test]
