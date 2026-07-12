@@ -2,7 +2,7 @@ use serde_yaml::Value;
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SkillMetadata {
@@ -57,11 +57,28 @@ pub enum SkillError {
         first: PathBuf,
         second: PathBuf,
     },
+    #[error("unknown skill '{name}'")]
+    UnknownSkill { name: String },
+    #[error("invalid resource path {path}")]
+    InvalidResourcePath { path: PathBuf },
+    #[error("resource {path} resolves outside skill root {root}")]
+    ResourceOutsideRoot { path: PathBuf, root: PathBuf },
+    #[error("resource at {path} is not a regular file")]
+    ResourceNotFile { path: PathBuf },
+    #[error("skill resource at {path} exceeds {limit} bytes")]
+    ResourceTooLarge { path: PathBuf, limit: usize },
+    #[error("skill resource at {path} is not UTF-8: {source}")]
+    ResourceNotUtf8 {
+        path: PathBuf,
+        #[source]
+        source: std::string::FromUtf8Error,
+    },
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct SkillCatalog {
     skills: BTreeMap<String, Skill>,
+    limits: SkillLimits,
 }
 
 impl SkillCatalog {
@@ -86,11 +103,78 @@ impl SkillCatalog {
             }
             skills.insert(skill.metadata.name.clone(), skill);
         }
-        Ok(Self { skills })
+        Ok(Self { skills, limits })
     }
 
     pub fn skill(&self, name: &str) -> Option<&Skill> {
         self.skills.get(name)
+    }
+
+    pub fn read_resource(&self, skill: &str, relative: &Path) -> Result<String, SkillError> {
+        let skill = self
+            .skills
+            .get(skill)
+            .ok_or_else(|| SkillError::UnknownSkill {
+                name: skill.to_owned(),
+            })?;
+        if relative.as_os_str().is_empty()
+            || relative.is_absolute()
+            || relative
+                .components()
+                .any(|part| !matches!(part, Component::Normal(_)))
+        {
+            return Err(SkillError::InvalidResourcePath {
+                path: relative.to_path_buf(),
+            });
+        }
+
+        let joined = skill.root.join(relative);
+        let target = joined.canonicalize().map_err(|source| SkillError::Io {
+            path: joined.clone(),
+            source,
+        })?;
+        if !target.starts_with(&skill.root) {
+            return Err(SkillError::ResourceOutsideRoot {
+                path: target,
+                root: skill.root.clone(),
+            });
+        }
+        let metadata = fs::metadata(&target).map_err(|source| SkillError::Io {
+            path: target.clone(),
+            source,
+        })?;
+        if !metadata.is_file() {
+            return Err(SkillError::ResourceNotFile { path: target });
+        }
+        let limit = self.limits.max_resource_bytes;
+        if metadata.len() > limit as u64 {
+            return Err(SkillError::ResourceTooLarge {
+                path: target,
+                limit,
+            });
+        }
+        let mut bytes = Vec::new();
+        File::open(&target)
+            .map_err(|source| SkillError::Io {
+                path: target.clone(),
+                source,
+            })?
+            .take(limit.saturating_add(1) as u64)
+            .read_to_end(&mut bytes)
+            .map_err(|source| SkillError::Io {
+                path: target.clone(),
+                source,
+            })?;
+        if bytes.len() > limit {
+            return Err(SkillError::ResourceTooLarge {
+                path: target,
+                limit,
+            });
+        }
+        String::from_utf8(bytes).map_err(|source| SkillError::ResourceNotUtf8 {
+            path: target,
+            source,
+        })
     }
 }
 

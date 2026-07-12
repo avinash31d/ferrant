@@ -44,6 +44,130 @@ fn load(root: &Path, max_instruction_bytes: usize) -> Result<SkillCatalog, Skill
     )
 }
 
+fn load_with_resource_limit(root: &Path, max_resource_bytes: usize) -> SkillCatalog {
+    SkillCatalog::load(
+        vec![SkillSource::Local {
+            root: root.to_path_buf(),
+        }],
+        SkillLimits {
+            max_resource_bytes,
+            ..SkillLimits::default()
+        },
+    )
+    .unwrap()
+}
+
+fn resource_catalog(limit: usize) -> (TempDir, SkillCatalog) {
+    let temp = TempDir::new();
+    write_skill(
+        temp.path(),
+        "package",
+        "---\nname: reader\ndescription: Read resources\n---\nRead.\n",
+    );
+    let catalog = load_with_resource_limit(temp.path(), limit);
+    (temp, catalog)
+}
+
+#[test]
+fn resource_reads_nested_utf8_file() {
+    let (temp, catalog) = resource_catalog(1024);
+    let nested = temp.path().join("package/assets");
+    fs::create_dir_all(&nested).unwrap();
+    fs::write(nested.join("guide.txt"), "héllo").unwrap();
+    assert_eq!(
+        catalog
+            .read_resource("reader", Path::new("assets/guide.txt"))
+            .unwrap(),
+        "héllo"
+    );
+}
+
+#[test]
+fn resource_rejects_unknown_skill() {
+    let (_temp, catalog) = resource_catalog(1024);
+    assert!(matches!(
+        catalog.read_resource("missing", Path::new("x")),
+        Err(SkillError::UnknownSkill { .. })
+    ));
+}
+
+#[test]
+fn resource_reports_missing_file() {
+    let (_temp, catalog) = resource_catalog(1024);
+    assert!(matches!(
+        catalog.read_resource("reader", Path::new("missing.txt")),
+        Err(SkillError::Io { .. })
+    ));
+}
+
+#[test]
+fn resource_rejects_absolute_path() {
+    let (temp, catalog) = resource_catalog(1024);
+    assert!(matches!(
+        catalog.read_resource("reader", &temp.path().join("outside")),
+        Err(SkillError::InvalidResourcePath { .. })
+    ));
+}
+
+#[test]
+fn resource_rejects_parent_traversal() {
+    let (_temp, catalog) = resource_catalog(1024);
+    assert!(matches!(
+        catalog.read_resource("reader", Path::new("../outside")),
+        Err(SkillError::InvalidResourcePath { .. })
+    ));
+}
+
+#[test]
+fn resource_rejects_non_utf8_content() {
+    let (temp, catalog) = resource_catalog(1024);
+    fs::write(temp.path().join("package/binary"), [0xff]).unwrap();
+    assert!(matches!(
+        catalog.read_resource("reader", Path::new("binary")),
+        Err(SkillError::ResourceNotUtf8 { .. })
+    ));
+}
+
+#[test]
+fn resource_enforces_byte_limit() {
+    let (temp, catalog) = resource_catalog(4);
+    fs::write(temp.path().join("package/large"), b"12345").unwrap();
+    assert!(matches!(
+        catalog.read_resource("reader", Path::new("large")),
+        Err(SkillError::ResourceTooLarge { limit: 4, .. })
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn resource_rejects_symlink_escaping_package_root() {
+    use std::os::unix::fs::symlink;
+    let (temp, catalog) = resource_catalog(1024);
+    let outside = temp.path().join("outside");
+    fs::write(&outside, "secret").unwrap();
+    symlink(&outside, temp.path().join("package/link")).unwrap();
+    assert!(matches!(
+        catalog.read_resource("reader", Path::new("link")),
+        Err(SkillError::ResourceOutsideRoot { .. })
+    ));
+}
+
+#[cfg(windows)]
+#[test]
+fn resource_rejects_symlink_escaping_package_root_when_permitted() {
+    use std::os::windows::fs::symlink_file;
+    let (temp, catalog) = resource_catalog(1024);
+    let outside = temp.path().join("outside");
+    fs::write(&outside, "secret").unwrap();
+    if symlink_file(&outside, temp.path().join("package/link")).is_err() {
+        return;
+    }
+    assert!(matches!(
+        catalog.read_resource("reader", Path::new("link")),
+        Err(SkillError::ResourceOutsideRoot { .. })
+    ));
+}
+
 #[test]
 fn local_discovers_recursively_and_extracts_body() {
     let temp = TempDir::new();
