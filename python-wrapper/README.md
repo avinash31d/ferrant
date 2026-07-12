@@ -30,8 +30,8 @@ prebuilt wheel.
 
 `pip install ferrant` also installs the `ferrant` command and its local
 FastAPI/Uvicorn runtime dependencies. Run `ferrant init` to create a
-function-based Python agent, `ferrant run` to host it locally, and
-`ferrant deploy --server https://deploy.example.com` to deploy through a
+function-based Python agent and `ferrant run` to host it locally. Configure
+`server: https://deploy.example.com` in `deploy.yml`, then run `ferrant deploy` to deploy through a
 Ferrant deployment server. See the repository's deployment documentation for
 the handler contract.
 

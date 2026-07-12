@@ -133,11 +133,21 @@ ferrant run
 
 `init` creates `agent.py` and `deploy.yml`; `run` serves `GET /health` and
 `POST /infer` locally for development. Deployment is remote: the CLI packages
-the application and uploads it to a Ferrant deployment server, which starts
-the container using its own Docker daemon.
+the application and uploads it to the deployment server configured in
+`deploy.yml`, which starts the container using its own Docker daemon.
 
 ```bash
-ferrant deploy --server https://deploy.example.com
+ferrant deploy
+ferrant status <deployment-id>
+ferrant logs <deployment-id>
+ferrant restart <deployment-id>
+ferrant stop <deployment-id>
+```
+
+Set the server once in the manifest:
+
+```yaml
+server: https://deploy.example.com
 ```
 
 See [deployment documentation](docs/deployment.md) for the handler contract.

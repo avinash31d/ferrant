@@ -4,13 +4,19 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
 use flate2::write::GzEncoder;
 use flate2::Compression;
+use futures::StreamExt;
 use serde::Deserialize;
 use std::fs;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tar::Builder;
 
-const RUNTIME: &str = include_str!("../server/runtime/ferrant_server.py");
+/// The local Python inference server embedded into the CLI binary.
+///
+/// Keeping this beside the CLI avoids requiring a separate `server/` checkout
+/// for `ferrant run`.
+const RUNTIME: &str = include_str!("ferrant_server.py");
 
 #[derive(Parser)]
 #[command(
@@ -41,9 +47,37 @@ enum Commands {
     Deploy {
         #[arg(short, long, default_value = "deploy.yml")]
         config: PathBuf,
-        /// Deployment server URL (or set FERRANT_DEPLOY_SERVER).
-        #[arg(long, env = "FERRANT_DEPLOY_SERVER")]
-        server: String,
+    },
+    /// Show the current state of a deployment.
+    Status {
+        #[arg(short, long, default_value = "deploy.yml")]
+        config: PathBuf,
+        /// Deployment ID returned by `ferrant deploy`.
+        deployment: String,
+    },
+    /// Show logs produced by a deployment.
+    Logs {
+        #[arg(short, long, default_value = "deploy.yml")]
+        config: PathBuf,
+        /// Deployment ID returned by `ferrant deploy`.
+        deployment: String,
+        /// Keep the connection open and print new log output as it arrives.
+        #[arg(long, alias = "follow")]
+        stream: bool,
+    },
+    /// Restart a deployment.
+    Restart {
+        #[arg(short, long, default_value = "deploy.yml")]
+        config: PathBuf,
+        /// Deployment ID returned by `ferrant deploy`.
+        deployment: String,
+    },
+    /// Stop a deployment.
+    Stop {
+        #[arg(short, long, default_value = "deploy.yml")]
+        config: PathBuf,
+        /// Deployment ID returned by `ferrant deploy`.
+        deployment: String,
     },
 }
 
@@ -54,6 +88,9 @@ struct DeployConfig {
     handler: String,
     #[serde(default = "default_port")]
     port: u16,
+    /// Base URL for the Ferrant deployment server.
+    #[serde(default)]
+    server: String,
 }
 
 fn default_name() -> String {
@@ -74,7 +111,15 @@ pub fn execute(args: &[String]) -> Result<()> {
     match cli.command {
         Commands::Init { directory } => init(&directory),
         Commands::Run { config, port } => run(&config, port),
-        Commands::Deploy { config, server } => deploy(&config, &server),
+        Commands::Deploy { config } => deploy(&config),
+        Commands::Status { config, deployment } => deployment_status(&config, &deployment),
+        Commands::Logs {
+            config,
+            deployment,
+            stream,
+        } => deployment_logs(&config, &deployment, stream),
+        Commands::Restart { config, deployment } => restart_deployment(&config, &deployment),
+        Commands::Stop { config, deployment } => stop_deployment(&config, &deployment),
     }
 }
 
@@ -96,7 +141,9 @@ fn init(directory: &Path) -> Result<()> {
         .unwrap_or("echo-agent");
     fs::write(
         &config,
-        format!("name: {name}\nhandler: agent:reply\nport: 8000\n"),
+        format!(
+            "name: {name}\nhandler: agent:reply\nport: 8000\nserver: https://deploy.example.com\n"
+        ),
     )?;
     println!("Created {} and {}", agent.display(), config.display());
     println!("Next: cd {} && ferrant run", directory.display());
@@ -132,10 +179,10 @@ struct DeploymentResponse {
     endpoint: String,
 }
 
-fn deploy(config_path: &Path, server: &str) -> Result<()> {
+fn deploy(config_path: &Path) -> Result<()> {
     let (config, app_dir) = load_config(config_path)?;
     let archive = package_application(&app_dir)?;
-    let url = format!("{}/deployments", server.trim_end_matches('/'));
+    let url = deployment_url(&config.server, "deployments")?;
     let (status, body) = tokio::runtime::Runtime::new()?
         .block_on(async {
             let response = reqwest::Client::new()
@@ -159,6 +206,114 @@ fn deploy(config_path: &Path, server: &str) -> Result<()> {
     println!("Deployed {} ({})", config.name, deployment.id);
     println!("Inference endpoint: {}/infer", deployment.endpoint);
     Ok(())
+}
+
+fn deployment_status(config_path: &Path, deployment: &str) -> Result<()> {
+    deployment_request(config_path, deployment, "", reqwest::Method::GET, "status")
+}
+
+fn deployment_logs(config_path: &Path, deployment: &str, stream: bool) -> Result<()> {
+    let (config, _) = load_config(config_path)?;
+    let deployment = validate_deployment_id(deployment)?;
+    let suffix = if stream { "/logs?follow=true" } else { "/logs" };
+    let url = deployment_url(&config.server, &format!("deployments/{deployment}{suffix}"))?;
+    tokio::runtime::Runtime::new()?
+        .block_on(async {
+            let response = reqwest::Client::new().get(url).send().await?;
+            let status = response.status();
+            if !status.is_success() {
+                let body = response.text().await?;
+                bail!("deployment server returned {status}: {body}");
+            }
+
+            let mut output = io::stdout().lock();
+            let mut body = response.bytes_stream();
+            while let Some(chunk) = body.next().await {
+                output
+                    .write_all(&chunk?)
+                    .context("failed to write deployment logs")?;
+                output.flush().context("failed to flush deployment logs")?;
+            }
+            Ok::<_, anyhow::Error>(())
+        })
+        .with_context(|| "failed to contact deployment server for logs")
+}
+
+fn restart_deployment(config_path: &Path, deployment: &str) -> Result<()> {
+    deployment_request(
+        config_path,
+        deployment,
+        "/restart",
+        reqwest::Method::POST,
+        "restart",
+    )
+}
+
+fn stop_deployment(config_path: &Path, deployment: &str) -> Result<()> {
+    deployment_request(
+        config_path,
+        deployment,
+        "/stop",
+        reqwest::Method::POST,
+        "stop",
+    )
+}
+
+fn deployment_request(
+    config_path: &Path,
+    deployment: &str,
+    action: &str,
+    method: reqwest::Method,
+    description: &str,
+) -> Result<()> {
+    let (config, _) = load_config(config_path)?;
+    let deployment = validate_deployment_id(deployment)?;
+    let path = format!("deployments/{deployment}{action}");
+    let url = deployment_url(&config.server, &path)?;
+    let (status, body) = tokio::runtime::Runtime::new()?
+        .block_on(async {
+            let response = reqwest::Client::new().request(method, url).send().await?;
+            let status = response.status();
+            let body = response.text().await?;
+            Ok::<_, reqwest::Error>((status, body))
+        })
+        .with_context(|| format!("failed to contact deployment server for {description}"))?;
+    if !status.is_success() {
+        bail!("deployment server returned {status}: {body}");
+    }
+    print_response(&body);
+    Ok(())
+}
+
+fn validate_deployment_id(deployment: &str) -> Result<&str> {
+    let deployment = deployment.trim();
+    if deployment.is_empty()
+        || !deployment
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+    {
+        bail!("deployment ID may contain only letters, numbers, hyphens, and underscores");
+    }
+    Ok(deployment)
+}
+
+fn deployment_url(server: &str, path: &str) -> Result<String> {
+    let server = server.trim_end_matches('/');
+    if server.is_empty() {
+        bail!("server must be set in deploy.yml");
+    }
+    Ok(format!("{server}/{path}"))
+}
+
+fn print_response(body: &str) {
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json).unwrap_or_else(|_| body.to_owned())
+        );
+    } else {
+        println!("{body}");
+    }
 }
 
 fn package_application(app_dir: &Path) -> Result<Vec<u8>> {
@@ -234,6 +389,14 @@ mod tests {
         assert_eq!(
             config_directory(Path::new("deploy.yml")).unwrap(),
             Path::new(".").canonicalize().unwrap()
+        );
+    }
+
+    #[test]
+    fn builds_management_urls_from_the_manifest_server() {
+        assert_eq!(
+            deployment_url("https://deploy.example.com/", "deployments/abc").unwrap(),
+            "https://deploy.example.com/deployments/abc"
         );
     }
 }
