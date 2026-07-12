@@ -159,8 +159,13 @@ fn resource_rejects_symlink_escaping_package_root_when_permitted() {
     let (temp, catalog) = resource_catalog(1024);
     let outside = temp.path().join("outside");
     fs::write(&outside, "secret").unwrap();
-    if symlink_file(&outside, temp.path().join("package/link")).is_err() {
-        return;
+    if let Err(error) = symlink_file(&outside, temp.path().join("package/link")) {
+        if error.kind() == std::io::ErrorKind::PermissionDenied
+            || error.raw_os_error() == Some(1314)
+        {
+            return;
+        }
+        panic!("failed to create test symlink: {error}");
     }
     assert!(matches!(
         catalog.read_resource("reader", Path::new("link")),
