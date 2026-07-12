@@ -574,6 +574,11 @@ async fn agent_skills_progressively_disclose_instructions_and_register_tools() {
         .as_deref()
         .unwrap();
     assert!(first_system.starts_with("Existing instructions\n\n"));
+    assert!(first_system.contains("<skill_usage>"));
+    assert!(first_system.contains("load_skill"));
+    assert!(first_system.contains("full Markdown instructions"));
+    assert!(first_system.contains("read_skill_resource"));
+    assert!(first_system.contains("bounded referenced resources"));
     assert!(first_system.contains("alpha"));
     assert!(first_system.contains("First skill"));
     assert!(first_system.find("alpha").unwrap() < first_system.find("zeta").unwrap());

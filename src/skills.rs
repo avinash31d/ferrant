@@ -152,7 +152,9 @@ impl SkillCatalog {
 
     /// A compact, deterministic catalog suitable for an agent system prompt.
     pub fn prompt_summary(&self) -> String {
-        let mut summary = String::from("<skills>\n");
+        let mut summary = String::from(
+            "<skill_usage>\nUse load_skill with a skill name to load its full Markdown instructions. Use read_skill_resource only for bounded referenced resources named by those instructions.\n</skill_usage>\n<skills>\n",
+        );
         for skill in self.skills.values() {
             summary.push_str("  <skill>\n    <name>");
             summary.push_str(&escape_xml(&skill.metadata.name));
